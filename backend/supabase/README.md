@@ -1,11 +1,14 @@
 # Supabase
 
-The backend connects to Supabase through its PostgreSQL connection string; it
-does not expose Supabase credentials to the Flutter client.
+The backend connects to PostgreSQL through a server-side connection string; it
+does not expose database credentials to the Flutter client. `DATABASE_URL` is
+preferred for local testing; `SUPABASE_DB_URL` is the deployment fallback.
 
 1. Copy `backend/.env.example` to `backend/.env`.
-2. Set `SUPABASE_DB_URL` to the connection string shown in the Supabase project
-   settings under **Database**. URL-encode special characters in the password.
+2. For local tests, set `DATABASE_URL` to your local PostgreSQL connection
+   string and `DB_SSL=false`. For Supabase, set `SUPABASE_DB_URL` to the
+   connection string shown in the project settings under **Database**.
+   URL-encode special characters in the password.
 3. From `backend`, run `npm install` and `npm run migrate` to create the schema.
    Use a direct or session-mode connection for schema setup.
 4. Start the API with `npm start`.

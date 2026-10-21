@@ -3,10 +3,10 @@
 const { Pool, types } = require('pg');
 const logger = require('../utils/logger');
 
-const connectionString = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+const connectionString = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
 
 if (!connectionString) {
-  throw new Error('SUPABASE_DB_URL is required to connect to the Supabase database.');
+  throw new Error('DATABASE_URL (local PostgreSQL) or SUPABASE_DB_URL is required to connect to the database.');
 }
 
 types.setTypeParser(types.builtins.INT8, (value) => parseInt(value, 10));

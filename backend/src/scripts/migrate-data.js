@@ -32,9 +32,9 @@ const TABLES = [
 
 async function migrateData() {
   const mysqlUrl = process.env.MYSQL_SOURCE_URL;
-  const postgresUrl = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+  const postgresUrl = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
   if (!mysqlUrl || !postgresUrl) {
-    throw new Error('MYSQL_SOURCE_URL and SUPABASE_DB_URL are required to migrate data.');
+    throw new Error('MYSQL_SOURCE_URL and DATABASE_URL (or SUPABASE_DB_URL) are required to migrate data.');
   }
 
   const source = await mysql.createConnection(mysqlUrl);

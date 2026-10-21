@@ -6,11 +6,11 @@ const path = require('path');
 const { Client } = require('pg');
 
 const schemaPath = path.join(__dirname, '../../supabase/schema.sql');
-const connectionString = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+const connectionString = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
 
 async function migrate() {
   if (!connectionString) {
-    throw new Error('SUPABASE_DB_URL is required to run the Supabase schema.');
+    throw new Error('DATABASE_URL (local PostgreSQL) or SUPABASE_DB_URL is required to run the schema.');
   }
 
   const client = new Client({
@@ -20,12 +20,12 @@ async function migrate() {
   });
 
   try {
-    console.log('Connexion à Supabase (PostgreSQL)...');
+    console.log('Connexion à PostgreSQL...');
     await client.connect();
     await client.query(fs.readFileSync(schemaPath, 'utf8'));
-    console.log('Schéma Supabase appliqué avec succès.');
+    console.log('Schéma PostgreSQL appliqué avec succès.');
   } catch (err) {
-    console.error('Erreur de migration Supabase:', err.message);
+    console.error('Erreur de migration PostgreSQL:', err.message);
     process.exitCode = 1;
   } finally {
     await client.end();
