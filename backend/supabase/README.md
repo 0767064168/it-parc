@@ -1,32 +1,46 @@
-# Supabase
+# Configuration Supabase (PostgreSQL)
 
-The backend connects to PostgreSQL through a server-side connection string; it
-does not expose database credentials to the Flutter client. `DATABASE_URL` is
-preferred for local testing; `SUPABASE_DB_URL` is the deployment fallback.
+Le backend fonctionne à 100% avec Supabase (PostgreSQL). La base de données et les migrations sont nativement au format Supabase.
+Le client Flutter communique exclusivement avec l'API Node.js/Express, les identifiants Supabase ne sont jamais exposés côté client.
 
-1. Copy `backend/.env.example` to `backend/.env`.
-2. For local tests, set `DATABASE_URL` to your local PostgreSQL connection
-   string and `DB_SSL=false`. For Supabase, set `SUPABASE_DB_URL` to the
-   connection string shown in the project settings under **Database**.
-   URL-encode special characters in the password.
-3. From `backend`, run `npm install` and `npm run migrate` to create the schema.
-   Use a direct or session-mode connection for schema setup.
-4. Start the API with `npm start`.
+## 1. Structure
 
-`schema.sql` is the PostgreSQL schema used by the migration command. The
-existing files in `backend/migrations` are legacy MySQL migrations and are not
-executed by this command.
+- **`supabase/migrations/`** : Migrations SQL séquentielles standard Supabase (ex: `20261021000001_initial_schema.sql`).
+- **`supabase/schema.sql`** : Schéma global de référence PostgreSQL / Supabase.
+- **`supabase/seed.sql`** : Données initiales et de démonstration prêtes pour Supabase (utilisateurs, équipements, tickets, conformité, SLA, etc.).
 
-To copy existing records, set `MYSQL_SOURCE_URL` to the old MySQL connection
-URL and run `npm run migrate:data` from `backend` after applying the schema.
-The transfer is ordered by foreign-key dependencies, uses batches, preserves
-primary keys, and does not overwrite rows already present in Supabase. Back up
-both databases first and review the output; tables missing from the source are
-reported and skipped. Before copying any rows, the script verifies that each
-present source table exists in Supabase and that all source columns have a
-destination. If that check fails, resolve the schema mismatch and rerun it.
-Run the transfer before directing production traffic to the new database.
+## 2. Configuration (`.env`)
 
-The backend still manages its own `auth_users` accounts and JWTs. Supabase
-database credentials must remain server-side and must never be added to the
-Flutter application.
+1. Copiez `backend/.env.example` vers `backend/.env`.
+2. Dans le tableau de bord Supabase : **Project Settings > Database > Connection string (URI)**.
+3. Renseignez `SUPABASE_DB_URL` dans `.env` :
+   ```dotenv
+   SUPABASE_DB_URL=postgresql://postgres:[MOT_DE_PASSE]@db.[PROJECT_REF].supabase.co:5432/postgres
+   DB_SSL=true
+   ```
+   *Astuce : Si votre mot de passe contient des caractères spéciaux, veillez à les encoder en URL.*
+
+## 3. Commandes
+
+Depuis le dossier `backend` :
+
+```bash
+# 1. Appliquer toutes les migrations Supabase
+npm run migrate
+
+# 2. Insérer les données de démonstration dans Supabase
+npm run seed
+
+# 3. Lancer l'API
+npm start
+```
+
+## 4. Migration de données historiques (optionnel)
+
+Si vous avez d'anciennes données MySQL à rapatrier vers Supabase :
+1. Renseignez `MYSQL_SOURCE_URL` dans votre `.env`.
+2. Exécutez :
+   ```bash
+   npm run migrate:data
+   ```
+Les clés primaires et l'intégrité relationnelle sont préservées, et les compteurs de séquence (`IDENTITY`) sont automatiquement resynchronisés.

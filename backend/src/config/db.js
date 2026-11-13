@@ -3,17 +3,17 @@
 const { Pool, types } = require('pg');
 const logger = require('../utils/logger');
 
-const connectionString = process.env.DATABASE_URL || process.env.SUPABASE_DB_URL;
+const connectionString = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
 
 if (!connectionString) {
-  throw new Error('DATABASE_URL (local PostgreSQL) or SUPABASE_DB_URL is required to connect to the database.');
+  throw new Error('SUPABASE_DB_URL (ou DATABASE_URL) est requis pour se connecter à la base de données Supabase.');
 }
 
 types.setTypeParser(types.builtins.INT8, (value) => parseInt(value, 10));
 
 const pool = new Pool({
   connectionString,
-  ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: true },
+  ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
   max: parseInt(process.env.DB_POOL_SIZE, 10) || 10,
   connectionTimeoutMillis: 10000,
 });
