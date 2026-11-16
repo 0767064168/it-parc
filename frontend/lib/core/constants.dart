@@ -5,7 +5,7 @@
 class AppConstants {
   // Pour un vrai téléphone sur le même réseau Wi-Fi, utiliser l'IP de la machine serveur.
   // Pour l'émulateur Android : utiliser 10.0.2.2 (alias de localhost).
-  static const String apiBaseUrl = 'http://169.254.55.224:3000/api';
+  static const String apiBaseUrl = 'https://parc-it.vercel.app/api';
 
   
   // Clés SharedPreferences

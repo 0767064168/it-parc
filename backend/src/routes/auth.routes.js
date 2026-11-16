@@ -37,7 +37,7 @@ const fs = require('fs');
 
 const avatarStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = './uploads/avatars';
+    const dir = process.env.VERCEL ? '/tmp/uploads/avatars' : './uploads/avatars';
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }

@@ -66,12 +66,17 @@ io.on('connection', (socket) => {
   });
 });
 
-// ── Créer les dossiers nécessaires ──────────────────────────────────────────
-const uploadDir = process.env.UPLOAD_DIR || './uploads';
-const logDir = process.env.LOG_DIR || './logs';
-[uploadDir, logDir].forEach(dir => {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-});
+// ── Créer les dossiers nécessaires (skip sur Vercel — filesystem en lecture seule)
+const isVercel = !!process.env.VERCEL;
+const uploadDir = isVercel ? '/tmp/uploads' : (process.env.UPLOAD_DIR || './uploads');
+const logDir = isVercel ? '/tmp/logs' : (process.env.LOG_DIR || './logs');
+try {
+  [uploadDir, logDir].forEach(dir => {
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  });
+} catch (_) {
+  // Vercel : filesystem en lecture seule, on ignore l'erreur
+}
 
 // ── Sécurité ─────────────────────────────────────────────────────────────────
 // Désactiver la CSP uniquement pour le formulaire public /ticket
@@ -217,6 +222,9 @@ async function start() {
   }
 }
 
-start();
+// ── Démarrage (uniquement en local, pas sur Vercel) ───────────────────────────
+if (require.main === module) {
+  start();
+}
 
 module.exports = app;

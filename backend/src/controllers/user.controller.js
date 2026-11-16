@@ -3,7 +3,7 @@ const UserModel = require('../models/user.model');
 const { query } = require('../config/db');
 const { success, error, paginated } = require('../utils/response');
 const logger = require('../utils/logger');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 async function list(req, res) {
   try {
