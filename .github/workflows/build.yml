@@ -90,15 +90,21 @@ jobs:
   create-release:
     name: Create GitHub Release
     needs: [build-android, build-windows]
+    if: always() && !cancelled() && (needs.build-android.result == 'success' || needs.build-windows.result == 'success')
     runs-on: ubuntu-latest
     steps:
+      - name: Create release folder
+        run: mkdir -p release-files
+
       - name: Download Android APK
+        if: needs.build-android.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: parc-it-android-apk
           path: release-files
 
       - name: Download Windows Zip
+        if: needs.build-windows.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: parc-it-windows
@@ -115,9 +121,7 @@ jobs:
             * 📱 **Android** : Téléchargez `parc-it.apk` et installez-le directement sur votre téléphone ou tablette Android.
             * 💻 **Windows** : Téléchargez `parc-it-windows.zip`, décompressez l'archive dans un dossier et lancez `gestionnaire_parc_it.exe`.
             * 🌐 **Web** : Accessible en ligne sur [https://parc-it.vercel.app](https://parc-it.vercel.app).
-          files: |
-            release-files/parc-it.apk
-            release-files/parc-it-windows.zip
+          files: release-files/*
           draft: false
           prerelease: false
           make_latest: true
