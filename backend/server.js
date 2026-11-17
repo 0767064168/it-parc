@@ -93,12 +93,17 @@ app.use((req, res, next) => {
 });
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
-  .split(',').map(o => o.trim());
+const defaultAllowed = [
+  'http://localhost:3000',
+  'http://localhost:8080',
+  'https://parc-it.vercel.app',
+];
+const envOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : [];
+const allowedOrigins = Array.from(new Set([...defaultAllowed, ...envOrigins]));
 
 app.use(cors({
-  // En dev, on évite de faire crash/propager une erreur si l'origine n'est pas listée.
-  // On autorise seulement les origines connues si fournies, sinon on laisse passer.
   origin: (origin, callback) => {
     // Autoriser les requêtes sans origine (apps mobiles/desktop Flutter)
     if (!origin) return callback(null, true);
@@ -125,10 +130,12 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// Rate limit strict pour l'auth
+// Rate limit pour l'auth
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
-  max: isDev ? 1000 : 10,
+  max: isDev ? 1000 : 100,
+  standardHeaders: true,
+  legacyHeaders: false,
   message: { success: false, message: 'Trop de tentatives de connexion. Réessayez dans 15 minutes.' },
 });
 app.use('/api/auth/login', authLimiter);

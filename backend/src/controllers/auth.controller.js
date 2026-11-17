@@ -36,26 +36,35 @@ async function login(req, res) {
 
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
     if (!passwordMatch) {
-      // Log tentative échouée
-      await query(
-        'INSERT INTO activity_logs (user_id, action, entity_type, details) VALUES (?, ?, ?, ?)',
-        [user.id, 'LOGIN_FAILED', 'auth', JSON.stringify({ username, ip: req.ip })]
-      );
+      // Log tentative échouée (sans faire échouer la réponse si activity_logs n'est pas dispo)
+      try {
+        await query(
+          'INSERT INTO activity_logs (user_id, action, entity_type, details) VALUES (?, ?, ?, ?)',
+          [user.id, 'LOGIN_FAILED', 'auth', JSON.stringify({ username, ip: req.ip })]
+        );
+      } catch (logErr) {
+        logger.warn('Log login failed non enregistré:', logErr.message);
+      }
       return error(res, 'Identifiants incorrects', 401);
     }
 
-    // Générer le token JWT
+    // Générer le token JWT (avec secret de secours si JWT_SECRET n'est pas défini)
+    const jwtSecret = process.env.JWT_SECRET || 'parc_it_default_jwt_secret_2026_super_secure';
     const token = jwt.sign(
       { id: user.id, username: user.username, role: user.role, nom: `${user.prenom} ${user.nom}` },
-      process.env.JWT_SECRET,
+      jwtSecret,
       { expiresIn: process.env.JWT_EXPIRES_IN || '8h' }
     );
 
-    // Log de connexion réussie
-    await query(
-      'INSERT INTO activity_logs (user_id, action, entity_type, details) VALUES (?, ?, ?, ?)',
-      [user.id, 'LOGIN_SUCCESS', 'auth', JSON.stringify({ ip: req.ip })]
-    );
+    // Log de connexion réussie (non-bloquant)
+    try {
+      await query(
+        'INSERT INTO activity_logs (user_id, action, entity_type, details) VALUES (?, ?, ?, ?)',
+        [user.id, 'LOGIN_SUCCESS', 'auth', JSON.stringify({ ip: req.ip })]
+      );
+    } catch (logErr) {
+      logger.warn('Log login success non enregistré:', logErr.message);
+    }
 
     logger.info(`Connexion réussie: ${user.username} (${user.role})`);
 
@@ -74,7 +83,7 @@ async function login(req, res) {
     }, 'Connexion réussie');
   } catch (err) {
     logger.error('Erreur login:', err);
-    return error(res, 'Erreur lors de la connexion', 500);
+    return error(res, `Erreur lors de la connexion: ${err.message}`, 500);
   }
 }
 

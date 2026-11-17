@@ -24,7 +24,8 @@ const authenticate = (req, res, next) => {
       return error(res, 'Token invalide', 401);
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const jwtSecret = process.env.JWT_SECRET || 'parc_it_default_jwt_secret_2026_super_secure';
+    const decoded = jwt.verify(token, jwtSecret);
     req.user = {
       id: decoded.id,
       username: decoded.username,
@@ -55,7 +56,8 @@ const optionalAuth = (req, res, next) => {
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
       if (token) {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const jwtSecret = process.env.JWT_SECRET || 'parc_it_default_jwt_secret_2026_super_secure';
+    const decoded = jwt.verify(token, jwtSecret);
         req.user = { id: decoded.id, username: decoded.username, role: decoded.role };
       }
     }
