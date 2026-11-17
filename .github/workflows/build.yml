@@ -55,15 +55,15 @@ jobs:
       - name: Publish Windows to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v1.0.0"
-          name: "Parc IT v1.0.0 (Windows & Android)"
+          tag_name: "release-${{ github.run_number }}"
+          name: "Parc IT - Version #${{ github.run_number }}"
           body: |
             ### 📦 Fichiers d'installation Parc IT :
             * 💻 **Windows** : Téléchargez `parc-it-windows.zip`, décompressez l'archive et lancez `gestionnaire_parc_it.exe`.
             * 📱 **Android** : Téléchargez `parc-it.apk` pour installer l'application sur votre smartphone ou tablette.
             * 🌐 **Web** : Accessible en ligne sur [https://parc-it.vercel.app](https://parc-it.vercel.app).
           files: ${{ github.workspace }}/parc-it-windows.zip
-          fail_on_unmatched_files: true
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -107,14 +107,14 @@ jobs:
       - name: Publish APK to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v1.0.0"
-          name: "Parc IT v1.0.0 (Windows & Android)"
+          tag_name: "release-${{ github.run_number }}"
+          name: "Parc IT - Version #${{ github.run_number }}"
           body: |
             ### 📦 Fichiers d'installation Parc IT :
             * 💻 **Windows** : Téléchargez `parc-it-windows.zip`, décompressez l'archive et lancez `gestionnaire_parc_it.exe`.
             * 📱 **Android** : Téléchargez `parc-it.apk` pour installer l'application sur votre smartphone ou tablette.
             * 🌐 **Web** : Accessible en ligne sur [https://parc-it.vercel.app](https://parc-it.vercel.app).
           files: ${{ github.workspace }}/parc-it.apk
-          fail_on_unmatched_files: true
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
