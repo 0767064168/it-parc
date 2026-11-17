@@ -9,43 +9,6 @@ permissions:
   contents: write
 
 jobs:
-  build-android:
-    name: Build Android APK
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: 'stable'
-          cache: true
-
-      - name: Install dependencies
-        working-directory: frontend
-        run: flutter pub get
-
-      - name: Build APK (Release)
-        working-directory: frontend
-        run: flutter build apk --release
-
-      - name: Prepare APK file
-        run: |
-          cp frontend/build/app/outputs/flutter-apk/app-release.apk parc-it.apk
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: parc-it-android-apk
-          path: parc-it.apk
-
   build-windows:
     name: Build Windows App
     runs-on: windows-latest
@@ -87,43 +50,67 @@ jobs:
           name: parc-it-windows
           path: parc-it-windows.zip
 
-  create-release:
-    name: Create GitHub Release
-    needs: [build-android, build-windows]
-    if: always() && !cancelled() && (needs.build-android.result == 'success' || needs.build-windows.result == 'success')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Create release folder
-        run: mkdir -p release-files
-
-      - name: Download Android APK
-        if: needs.build-android.result == 'success'
-        uses: actions/download-artifact@v4
-        with:
-          name: parc-it-android-apk
-          path: release-files
-
-      - name: Download Windows Zip
-        if: needs.build-windows.result == 'success'
-        uses: actions/download-artifact@v4
-        with:
-          name: parc-it-windows
-          path: release-files
-
-      - name: Create or Update GitHub Release
+      - name: Publish Windows to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v1.0.${{ github.run_number }}"
-          name: "Parc IT - Version 1.0.${{ github.run_number }}"
+          tag_name: "v1.0.0"
+          name: "Parc IT v1.0.0 (Windows & Android)"
           body: |
-            ### 📦 Fichiers d'installation disponibles :
-
-            * 📱 **Android** : Téléchargez `parc-it.apk` et installez-le directement sur votre téléphone ou tablette Android.
-            * 💻 **Windows** : Téléchargez `parc-it-windows.zip`, décompressez l'archive dans un dossier et lancez `gestionnaire_parc_it.exe`.
+            ### 📦 Fichiers d'installation Parc IT :
+            * 💻 **Windows** : Téléchargez `parc-it-windows.zip`, décompressez l'archive et lancez `gestionnaire_parc_it.exe`.
+            * 📱 **Android** : Téléchargez `parc-it.apk` pour installer l'application sur votre smartphone ou tablette.
             * 🌐 **Web** : Accessible en ligne sur [https://parc-it.vercel.app](https://parc-it.vercel.app).
-          files: release-files/*
-          draft: false
-          prerelease: false
-          make_latest: true
+          files: parc-it-windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: flutter pub get
+
+      - name: Build APK (Release)
+        working-directory: frontend
+        run: flutter build apk --release --verbose
+
+      - name: Prepare APK file
+        run: |
+          cp frontend/build/app/outputs/flutter-apk/app-release.apk parc-it.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: parc-it-android-apk
+          path: parc-it.apk
+
+      - name: Publish APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v1.0.0"
+          name: "Parc IT v1.0.0 (Windows & Android)"
+          body: |
+            ### 📦 Fichiers d'installation Parc IT :
+            * 💻 **Windows** : Téléchargez `parc-it-windows.zip`, décompressez l'archive et lancez `gestionnaire_parc_it.exe`.
+            * 📱 **Android** : Téléchargez `parc-it.apk` pour installer l'application sur votre smartphone ou tablette.
+            * 🌐 **Web** : Accessible en ligne sur [https://parc-it.vercel.app](https://parc-it.vercel.app).
+          files: parc-it.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
