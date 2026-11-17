@@ -39,7 +39,9 @@ jobs:
           $releaseDir = Get-ChildItem -Path "frontend/build/windows" -Recurse -Directory -Filter "Release" | Select-Object -First 1
           if ($releaseDir) {
             Write-Host "Found release directory at $($releaseDir.FullName)"
-            Compress-Archive -Path "$($releaseDir.FullName)/*" -DestinationPath "parc-it-windows.zip"
+            $zipPath = Join-Path $env:GITHUB_WORKSPACE "parc-it-windows.zip"
+            Compress-Archive -Path "$($releaseDir.FullName)/*" -DestinationPath $zipPath -Force
+            Write-Host "Archive created at $zipPath"
           } else {
             throw "Release directory not found"
           }
@@ -60,7 +62,8 @@ jobs:
             * 💻 **Windows** : Téléchargez `parc-it-windows.zip`, décompressez l'archive et lancez `gestionnaire_parc_it.exe`.
             * 📱 **Android** : Téléchargez `parc-it.apk` pour installer l'application sur votre smartphone ou tablette.
             * 🌐 **Web** : Accessible en ligne sur [https://parc-it.vercel.app](https://parc-it.vercel.app).
-          files: parc-it-windows.zip
+          files: ${{ github.workspace }}/parc-it-windows.zip
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -89,11 +92,11 @@ jobs:
 
       - name: Build APK (Release)
         working-directory: frontend
-        run: flutter build apk --release --android-skip-build-dependency-validation
+        run: flutter build apk --release --android-skip-build-dependency-validation --verbose
 
       - name: Prepare APK file
         run: |
-          cp frontend/build/app/outputs/flutter-apk/app-release.apk parc-it.apk
+          cp frontend/build/app/outputs/flutter-apk/app-release.apk $GITHUB_WORKSPACE/parc-it.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -111,6 +114,7 @@ jobs:
             * 💻 **Windows** : Téléchargez `parc-it-windows.zip`, décompressez l'archive et lancez `gestionnaire_parc_it.exe`.
             * 📱 **Android** : Téléchargez `parc-it.apk` pour installer l'application sur votre smartphone ou tablette.
             * 🌐 **Web** : Accessible en ligne sur [https://parc-it.vercel.app](https://parc-it.vercel.app).
-          files: parc-it.apk
+          files: ${{ github.workspace }}/parc-it.apk
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
