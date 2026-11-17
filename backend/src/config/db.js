@@ -3,23 +3,33 @@
 const { Pool, types } = require('pg');
 const logger = require('../utils/logger');
 
-const connectionString = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
-
-if (!connectionString) {
-  throw new Error('SUPABASE_DB_URL (ou DATABASE_URL) est requis pour se connecter à la base de données Supabase.');
-}
-
 types.setTypeParser(types.builtins.INT8, (value) => parseInt(value, 10));
 
-const pool = new Pool({
-  connectionString,
-  ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
-  max: parseInt(process.env.DB_POOL_SIZE, 10) || 10,
-  connectionTimeoutMillis: 10000,
-});
+let _pool = null;
 
-pool.on('error', (err) => {
-  logger.error(`Erreur inattendue du pool PostgreSQL: ${err.message}`);
+function getPool() {
+  if (!_pool) {
+    const connectionString = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+    if (!connectionString) {
+      throw new Error('SUPABASE_DB_URL (ou DATABASE_URL) est requis dans les variables d\'environnement pour se connecter à la base de données.');
+    }
+    _pool = new Pool({
+      connectionString,
+      ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
+      max: parseInt(process.env.DB_POOL_SIZE, 10) || 10,
+      connectionTimeoutMillis: 10000,
+    });
+    _pool.on('error', (err) => {
+      logger.error(`Erreur inattendue du pool PostgreSQL: ${err.message}`);
+    });
+  }
+  return _pool;
+}
+
+const pool = new Proxy({}, {
+  get(target, prop) {
+    return getPool()[prop];
+  }
 });
 
 function convertMysqlSql(sql) {

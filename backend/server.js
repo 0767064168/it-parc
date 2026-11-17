@@ -143,6 +143,14 @@ app.use(morgan('combined', {
   stream: { write: (msg) => logger.http(msg.trim()) }
 }));
 
+// ── Normalisation d'URL (compatibilité Vercel Serverless) ─────────────────────
+app.use((req, res, next) => {
+  if (!req.url.startsWith('/api') && !req.url.startsWith('/uploads') && !req.url.startsWith('/public') && !req.url.startsWith('/ticket') && !req.url.startsWith('/qr')) {
+    req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
+  }
+  next();
+});
+
 // ── Routes API ────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/assets', assetRoutes);
