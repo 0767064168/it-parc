@@ -2,19 +2,31 @@
   "version": 2,
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api/index.js"
+      "source": "/api/:match*",
+      "destination": "/api"
     },
     {
-      "source": "/uploads/(.*)",
-      "destination": "/api/index.js"
+      "source": "/uploads/:match*",
+      "destination": "/api"
     },
     {
-      "source": "/((?!api/|uploads/).*\\.(?:js|css|png|jpg|jpeg|gif|ico|svg|wasm|json|ttf|otf|frag))",
+      "source": "/ticket",
+      "destination": "/api"
+    },
+    {
+      "source": "/qr-ticket",
+      "destination": "/api"
+    },
+    {
+      "source": "/qr_ticket.png",
+      "destination": "/api"
+    },
+    {
+      "source": "/((?!api/|uploads/|ticket|qr-ticket|qr_ticket\\.png).*\\.(?:js|css|png|jpg|jpeg|gif|ico|svg|wasm|json|ttf|otf|frag))",
       "destination": "/public/$1"
     },
     {
-      "source": "/((?!api/|uploads/).*)",
+      "source": "/((?!api/|uploads/|ticket|qr-ticket|qr_ticket\\.png).*)",
       "destination": "/public/index.html"
     }
   ]
