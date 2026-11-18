@@ -10,6 +10,7 @@ const path = require('path');
 const { query } = require('../config/db');
 const { success, error } = require('../utils/response');
 const logger = require('../utils/logger');
+const { getJwtSecret } = require('../config/auth');
 
 /**
  * POST /api/auth/login
@@ -17,14 +18,18 @@ const logger = require('../utils/logger');
 async function login(req, res) {
   try {
     const { username, password } = req.body;
+    const cleanUser = (username || '').toLowerCase().trim();
 
-    // Chercher l'utilisateur
-    const users = await query(
-      'SELECT id, username, password_hash, role, nom, prenom, actif, avatar_url FROM auth_users WHERE username = ? LIMIT 1',
-      [username.toLowerCase().trim()]
+    logger.info(`Tentative de login pour username/email="${cleanUser}"`);
+
+    // Chercher par username OU par email
+    let users = await query(
+      'SELECT id, username, password_hash, role, nom, prenom, actif, avatar_url FROM auth_users WHERE LOWER(username) = ? OR LOWER(email) = ? LIMIT 1',
+      [cleanUser, cleanUser]
     );
 
     if (!users.length) {
+      logger.warn(`Login échoué: aucun compte trouvé pour "${cleanUser}"`);
       return error(res, 'Identifiants incorrects', 401);
     }
 
@@ -34,9 +39,10 @@ async function login(req, res) {
       return error(res, 'Compte désactivé. Contactez l\'administrateur.', 403);
     }
 
-    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+    const passwordMatch = await bcrypt.compare(password || '', user.password_hash);
+
     if (!passwordMatch) {
-      // Log tentative échouée (sans faire échouer la réponse si activity_logs n'est pas dispo)
+      logger.warn(`Mot de passe incorrect pour: "${user.username}"`);
       try {
         await query(
           'INSERT INTO activity_logs (user_id, action, entity_type, details) VALUES (?, ?, ?, ?)',
@@ -48,8 +54,7 @@ async function login(req, res) {
       return error(res, 'Identifiants incorrects', 401);
     }
 
-    // Générer le token JWT (avec secret de secours si JWT_SECRET n'est pas défini)
-    const jwtSecret = process.env.JWT_SECRET || 'parc_it_default_jwt_secret_2026_super_secure';
+    const jwtSecret = getJwtSecret();
     const token = jwt.sign(
       { id: user.id, username: user.username, role: user.role, nom: `${user.prenom} ${user.nom}` },
       jwtSecret,

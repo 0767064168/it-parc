@@ -105627,7 +105627,7 @@ A.acu.prototype={
 $2(a,b){return B.X9},
 $S:664}
 A.acd.prototype={
-adM(){var s,r="application/json",q=A.ba9("https://parc-it.vercel.app/api",B.qD,A.aB(["Content-Type",r,"Accept",r],t.N,t.z),B.qD),p=new A.Uv(A.b([B.H1],t.i6))
+adM(){var s,r="application/json",q=A.ba9("http://localhost:3000/api",B.qD,A.aB(["Content-Type",r,"Accept",r],t.N,t.z),B.qD),p=new A.Uv(A.b([B.H1],t.i6))
 p.P(p,B.RM)
 s=new A.afS($,p,$,new A.ajx(51200),!1)
 s.ij$=q

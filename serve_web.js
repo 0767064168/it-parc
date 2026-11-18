@@ -39,6 +39,26 @@ const server = http.createServer((req, res) => {
     return res.end();
   }
 
+  // Proxy vers le backend pour les routes API et uploads
+  if (req.url.startsWith('/api') || req.url.startsWith('/uploads')) {
+    const proxyReq = http.request({
+      hostname: '127.0.0.1',
+      port: 3000,
+      path: req.url,
+      method: req.method,
+      headers: { ...req.headers, host: '127.0.0.1:3000' }
+    }, (proxyRes) => {
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      proxyRes.pipe(res, { end: true });
+    });
+    proxyReq.on('error', (err) => {
+      res.writeHead(502, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, message: 'Backend local inaccessible' }));
+    });
+    req.pipe(proxyReq, { end: true });
+    return;
+  }
+
   // Normalisation du chemin URL
   let parsedUrl = req.url.split('?')[0];
   let safePath = path.normalize(parsedUrl).replace(/^(\.\.[\/\\])+/, '');

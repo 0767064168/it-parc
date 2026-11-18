@@ -4,18 +4,19 @@
 // ============================================
 'use strict';
 
-require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
-const path = require('path');
-const fs = require('fs');
 
 const logger = require('./src/utils/logger');
 const { testConnection } = require('./src/config/db');
+const { getJwtSecret } = require('./src/config/auth');
 
 // --- Routes ---
 const authRoutes = require('./src/routes/auth.routes');
@@ -123,7 +124,8 @@ app.use(cors({
 const isDev = process.env.NODE_ENV === 'development';
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: isDev ? 10000 : (parseInt(process.env.RATE_LIMIT_MAX) || 200),
+  max: isDev ? 100000 : (parseInt(process.env.RATE_LIMIT_MAX) || 200),
+  skip: () => isDev,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Trop de requêtes. Réessayez dans quelques minutes.' },
@@ -133,7 +135,8 @@ app.use('/api/', limiter);
 // Rate limit pour l'auth
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
-  max: isDev ? 1000 : 100,
+  max: isDev ? 100000 : 100,
+  skip: () => isDev,
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, message: 'Trop de tentatives de connexion. Réessayez dans 15 minutes.' },
@@ -149,6 +152,11 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('combined', {
   stream: { write: (msg) => logger.http(msg.trim()) }
 }));
+
+// ── Redirection racine vers l'application Flutter Web ─────────────────────────
+app.get('/', (req, res) => {
+  res.redirect('http://localhost:8080');
+});
 
 // ── Normalisation d'URL (compatibilité Vercel Serverless) ─────────────────────
 app.use((req, res, next) => {
@@ -224,6 +232,7 @@ app.use((err, req, res, next) => {
 // ── Démarrage ─────────────────────────────────────────────────────────────────
 async function start() {
   try {
+    getJwtSecret();
     await testConnection();
     logger.info('✅ Connexion Supabase PostgreSQL établie');
     server.listen(PORT, '0.0.0.0', () => {

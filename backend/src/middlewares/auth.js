@@ -6,12 +6,14 @@
 const jwt = require('jsonwebtoken');
 const { error } = require('../utils/response');
 const logger = require('../utils/logger');
+const { getJwtSecret } = require('../config/auth');
+const { query } = require('../config/db');
 
 /**
  * Middleware d'authentification JWT
  * Vérifie le Bearer token dans le header Authorization
  */
-const authenticate = (req, res, next) => {
+const authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
 
@@ -24,12 +26,25 @@ const authenticate = (req, res, next) => {
       return error(res, 'Token invalide', 401);
     }
 
-    const jwtSecret = process.env.JWT_SECRET || 'parc_it_default_jwt_secret_2026_super_secure';
+    const jwtSecret = getJwtSecret();
     const decoded = jwt.verify(token, jwtSecret);
+
+    const users = await query(
+      'SELECT id, username, role, actif FROM auth_users WHERE id = ? LIMIT 1',
+      [decoded.id]
+    );
+    if (!users.length) {
+      return error(res, 'Compte introuvable', 401);
+    }
+    if (!users[0].actif) {
+      return error(res, 'Compte désactivé', 403);
+    }
+
+    const currentUser = users[0];
     req.user = {
-      id: decoded.id,
-      username: decoded.username,
-      role: decoded.role,
+      id: currentUser.id,
+      username: currentUser.username,
+      role: currentUser.role,
       nom: decoded.nom,
     };
 
@@ -56,8 +71,8 @@ const optionalAuth = (req, res, next) => {
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
       if (token) {
-        const jwtSecret = process.env.JWT_SECRET || 'parc_it_default_jwt_secret_2026_super_secure';
-    const decoded = jwt.verify(token, jwtSecret);
+        const jwtSecret = getJwtSecret();
+        const decoded = jwt.verify(token, jwtSecret);
         req.user = { id: decoded.id, username: decoded.username, role: decoded.role };
       }
     }

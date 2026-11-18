@@ -1,5 +1,7 @@
 'use strict';
 
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
 const { Pool, types } = require('pg');
 const logger = require('../utils/logger');
 
