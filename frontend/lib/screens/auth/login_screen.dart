@@ -24,6 +24,9 @@ class _LoginScreenState extends State<LoginScreen>
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isTestingServer = false;
+  String? _serverTestResult;
+  Color _serverTestResultColor = Colors.white70;
 
   late final AnimationController _entranceCtrl;
   late final Animation<double> _fadeAnim;
@@ -62,6 +65,43 @@ class _LoginScreenState extends State<LoginScreen>
     _entranceCtrl.dispose();
     _blobCtrl.dispose();
     super.dispose();
+  }
+
+  Future<String> _checkServerConnection(String rawUrl) async {
+    final trimmedUrl = rawUrl.trim();
+    final uri = Uri.tryParse(trimmedUrl);
+    if (uri == null ||
+        !uri.hasAuthority ||
+        !['http', 'https'].contains(uri.scheme)) {
+      return '❌ Adresse du serveur invalide';
+    }
+
+    final cleanUrl = trimmedUrl.endsWith('/')
+        ? trimmedUrl.substring(0, trimmedUrl.length - 1)
+        : trimmedUrl;
+
+    try {
+      final response = await Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 4),
+        receiveTimeout: const Duration(seconds: 4),
+      )).get('$cleanUrl/health');
+
+      if (response.statusCode == 200 &&
+          response.data is Map &&
+          response.data['success'] == true) {
+        return '✅ Serveur et base de données accessibles';
+      }
+      return '❌ Réponse du serveur invalide';
+    } on DioException catch (e) {
+      final statusCode = e.response?.statusCode;
+      if (statusCode == 503) {
+        return '⚠️ Serveur accessible, mais base de données indisponible';
+      }
+      if (statusCode != null) {
+        return '❌ Test du serveur impossible (HTTP $statusCode)';
+      }
+      return '❌ Serveur injoignable ou délai dépassé';
+    }
   }
 
   void _showServerConfigDialog(BuildContext context) {
@@ -134,40 +174,18 @@ class _LoginScreenState extends State<LoginScreen>
                               testResultColor = Colors.white70;
                             });
 
-                            try {
-                              final testDio = Dio(BaseOptions(
-                                connectTimeout: const Duration(seconds: 4),
-                                receiveTimeout: const Duration(seconds: 4),
-                              ));
-                              final testUrl = urlController.text.trim();
-                              final cleanUrl = testUrl.endsWith('/')
-                                  ? testUrl.substring(0, testUrl.length - 1)
-                                  : testUrl;
-                              
-                              final response = await testDio.get('$cleanUrl/health');
-                              if (response.statusCode == 200 &&
-                                  response.data is Map &&
-                                  response.data['success'] == true) {
-                                setState(() {
-                                  testResult = '✅ Connexion réussie !';
-                                  testResultColor = const Color(0xFF34D399);
-                                });
-                              } else {
-                                setState(() {
-                                  testResult = '❌ Serveur injoignable ou réponse invalide';
-                                  testResultColor = const Color(0xFFFCA5A5);
-                                });
-                              }
-                            } catch (e) {
-                              setState(() {
-                                testResult = '❌ Erreur de connexion au serveur';
-                                testResultColor = const Color(0xFFFCA5A5);
-                              });
-                            } finally {
-                              setState(() {
-                                isTesting = false;
-                              });
-                            }
+                            final result =
+                                await _checkServerConnection(urlController.text);
+                            if (!context.mounted) return;
+                            setState(() {
+                              isTesting = false;
+                              testResult = result;
+                              testResultColor = result.startsWith('✅')
+                                  ? const Color(0xFF34D399)
+                                  : result.startsWith('⚠️')
+                                      ? const Color(0xFFFBBF24)
+                                      : const Color(0xFFFCA5A5);
+                            });
                           },
                     icon: isTesting
                         ? const SizedBox(
@@ -465,6 +483,65 @@ class _LoginScreenState extends State<LoginScreen>
                     ),
                   ),
                 ),
+                const SizedBox(height: 12),
+
+                OutlinedButton.icon(
+                  onPressed: _isTestingServer
+                      ? null
+                      : () async {
+                          setState(() {
+                            _isTestingServer = true;
+                            _serverTestResult = null;
+                          });
+
+                          final result = await _checkServerConnection(
+                            authProvider.getServerUrl(),
+                          );
+                          if (!mounted) return;
+                          setState(() {
+                            _isTestingServer = false;
+                            _serverTestResult = result;
+                            _serverTestResultColor = result.startsWith('✅')
+                                ? const Color(0xFF34D399)
+                                : result.startsWith('⚠️')
+                                    ? const Color(0xFFFBBF24)
+                                    : const Color(0xFFFCA5A5);
+                          });
+                        },
+                  icon: _isTestingServer
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation(Colors.white),
+                          ),
+                        )
+                      : const Icon(Icons.dns_outlined, size: 18),
+                  label: Text(
+                    _isTestingServer ? 'Test du serveur...' : 'Tester le serveur',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: BorderSide(color: Colors.white.withValues(alpha: 0.35)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+                if (_serverTestResult != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    _serverTestResult!,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.inter(
+                      color: _serverTestResultColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 20),
 
                 // Aide
