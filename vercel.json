@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "buildCommand": "npm run build",
   "rewrites": [
     {
       "source": "/api/:match*",
@@ -22,7 +23,7 @@
       "destination": "/api"
     },
     {
-      "source": "/((?!api/|uploads/|ticket|qr-ticket|qr_ticket\\.png).*\\.(?:js|css|png|jpg|jpeg|gif|ico|svg|wasm|json|ttf|otf|frag))",
+      "source": "/((?!api/|uploads/|ticket|qr-ticket|qr_ticket\\.png).*\\.(?:js|css|png|jpg|jpeg|gif|ico|svg|wasm|json|webmanifest|ttf|otf|frag))",
       "destination": "/public/$1"
     },
     {

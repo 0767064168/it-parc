@@ -1,5 +1,5 @@
 // ============================================
-// serve_web.js — Serveur HTTP pour l'application Flutter Web
+// serve_web.js — Serveur HTTP pour l'application Web PWA
 // ============================================
 'use strict';
 
@@ -15,6 +15,7 @@ const MIME_TYPES = {
   '.js': 'application/javascript; charset=utf-8',
   '.wasm': 'application/wasm',
   '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -90,5 +91,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Application Flutter Web démarrée sur http://localhost:${PORT}`);
+  console.log(`🚀 Application Web démarrée sur http://localhost:${PORT}`);
 });

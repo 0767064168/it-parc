@@ -54,7 +54,7 @@ io.on('connection', (socket) => {
   logger.info(`🔌 Client Socket.io connecté: ${socket.id}`);
   
   socket.on('join', (data) => {
-    // Le client Flutter envoie { userId: '...' }
+    // Les clients envoient { userId: '...' } pour rejoindre leur salon.
     const userId = typeof data === 'object' ? data.userId : data;
     if (userId) {
       socket.join(`user_${userId}`);
@@ -97,6 +97,10 @@ app.use((req, res, next) => {
 const defaultAllowed = [
   'http://localhost:3000',
   'http://localhost:8080',
+  'http://localhost:5173',
+  'http://localhost:4173',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:4173',
   'https://parc-it.vercel.app',
 ];
 const envOrigins = process.env.ALLOWED_ORIGINS
@@ -106,7 +110,7 @@ const allowedOrigins = Array.from(new Set([...defaultAllowed, ...envOrigins]));
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Autoriser les requêtes sans origine (apps mobiles/desktop Flutter)
+    // Autoriser les requêtes sans origine (scripts et intégrations).
     if (!origin) return callback(null, true);
 
     // Si ALLOWED_ORIGINS n'est pas défini explicitement, on autorise tout
@@ -153,7 +157,7 @@ app.use(morgan('combined', {
   stream: { write: (msg) => logger.http(msg.trim()) }
 }));
 
-// ── Redirection racine vers l'application Flutter Web ─────────────────────────
+// ── Redirection locale vers le serveur Web ────────────────────────────────────
 app.get('/', (req, res) => {
   res.redirect('http://localhost:8080');
 });

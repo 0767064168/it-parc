@@ -1,7 +1,7 @@
 # Configuration Supabase (PostgreSQL)
 
 Le backend fonctionne à 100% avec Supabase (PostgreSQL). La base de données et les migrations sont nativement au format Supabase.
-Le client Flutter communique exclusivement avec l'API Node.js/Express, les identifiants Supabase ne sont jamais exposés côté client.
+L’application Web communique exclusivement avec l’API Node.js/Express ; les identifiants Supabase ne sont jamais exposés côté client.
 
 ## 1. Structure
 
