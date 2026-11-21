@@ -2,10 +2,39 @@
 // lib/core/constants.dart — Constantes globales
 // ============================================
 
+import 'package:flutter/foundation.dart';
+
 class AppConstants {
-  // Pour un vrai téléphone sur le même réseau Wi-Fi, utiliser l'IP de la machine serveur.
-  // Pour l'émulateur Android : utiliser 10.0.2.2 (alias de localhost).
-  static const String apiBaseUrl = 'http://localhost:3000/api';
+  static const String _configuredApiBaseUrl =
+      String.fromEnvironment('API_BASE_URL');
+
+  static String get apiBaseUrl {
+    final configuredUrl = _configuredApiBaseUrl.trim();
+    if (configuredUrl.isNotEmpty) {
+      return configuredUrl.replaceFirst(RegExp(r'/+$'), '');
+    }
+
+    if (kIsWeb) {
+      final pageUri = Uri.base;
+      if (isLocalHost(pageUri.host)) {
+        final host = pageUri.host.contains(':')
+            ? '[${pageUri.host}]'
+            : pageUri.host;
+        return 'http://$host:3000/api';
+      }
+      return '${pageUri.origin}/api';
+    }
+
+    // Pour un téléphone sur le même Wi-Fi, définir API_BASE_URL avec l'IP du serveur.
+    // Pour l'émulateur Android, définir API_BASE_URL à http://10.0.2.2:3000/api.
+    return 'http://localhost:3000/api';
+  }
+
+  static bool get isHostedWeb =>
+      kIsWeb && !isLocalHost(Uri.base.host);
+
+  static bool isLocalHost(String host) =>
+      host == 'localhost' || host == '127.0.0.1' || host == '::1';
 
   
   // Clés SharedPreferences

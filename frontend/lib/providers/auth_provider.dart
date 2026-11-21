@@ -45,7 +45,14 @@ class AuthProvider extends ChangeNotifier {
       // Charger et appliquer l'URL du serveur personnalisée si elle existe
       final savedUrl = prefs.getString('server_url');
       if (savedUrl != null && savedUrl.isNotEmpty) {
-        _api.dio.options.baseUrl = savedUrl;
+        final savedHost = Uri.tryParse(savedUrl)?.host;
+        final staleLocalUrl =
+            AppConstants.isHostedWeb &&
+            savedHost != null &&
+            AppConstants.isLocalHost(savedHost);
+        if (!staleLocalUrl) {
+          _api.dio.options.baseUrl = savedUrl;
+        }
       }
 
       // Supprimer la session précédente à chaque démarrage de l'app.
