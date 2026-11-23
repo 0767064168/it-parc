@@ -725,10 +725,12 @@ function ModulePage({ path }: { path: string }) {
   const [query, setQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
   const [page, setPage] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
+  const rows = useMemo(() => extractRows(payload), [payload]);
   const sortedRows = useMemo(() => {
     if (!sortField) return rows;
     return [...rows].sort((a, b) => {
@@ -752,7 +754,6 @@ function ModulePage({ path }: { path: string }) {
   const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const rows = useMemo(() => extractRows(payload), [payload]);
   const details = pageTitles[path];
   const totalCount = asRecord(payload)?.total;
   const canNextPage = definition.paginated && (
@@ -890,7 +891,7 @@ function ModulePage({ path }: { path: string }) {
                     {definition.columns.map((column) => {
                       const value = getPath(row, column.key);
                       const text = cellText(value);
-                      let content = text;
+                      let content: React.ReactNode = text;
                       if (column.key === 'statut' || column.key.endsWith('.statut')) {
                         content = <span className={`status-badge ${statusTone(text)}`}>{text}</span>;
                       } else if (column.key === 'priorite' || column.key.endsWith('.priorite')) {
