@@ -709,7 +709,16 @@ function extractRows(value: unknown, depth = 0): Record<string, unknown>[] {
 }
 
 function getPath(record: Record<string, unknown>, path: string): unknown {
-  return path.split('.').reduce<unknown>((value, key) => asRecord(value)?.[key], record);
+  const direct = record[path];
+  if (direct !== undefined) return direct;
+  const nested = path.split('.').reduce<unknown>((value, key) => asRecord(value)?.[key], record);
+  if (nested !== undefined) return nested;
+  if (path === 'asset.asset_tag') return record.asset_tag ?? record['Nom Machine'] ?? record.nom_machine;
+  if (path === 'user.nom') return record.user_nom ?? record.nom ?? record.utilisateur_nom;
+  if (path === 'user.prenom') return record.user_prenom ?? record.prenom;
+  if (path === 'user.departement') return record.departement ?? record.user_dept;
+  if (path === 'user.site') return record.site ?? record.user_site;
+  return undefined;
 }
 
 function cellText(value: unknown): string {
@@ -762,6 +771,27 @@ function ModulePage({ path }: { path: string }) {
   const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [downloadingPdfId, setDownloadingPdfId] = useState<number | null>(null);
+
+  async function handleDownloadPdf(affectationId: number, tag?: string) {
+    try {
+      setDownloadingPdfId(affectationId);
+      const blob = await apiDownload(`/affectations/${affectationId}/pdf`, { token });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Fiche_Affectation_${tag || affectationId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur lors du téléchargement du PDF');
+    } finally {
+      setDownloadingPdfId(null);
+    }
+  }
+
   const details = pageTitles[path];
   const totalCount = asRecord(payload)?.total;
   const canNextPage = definition.paginated && (
@@ -825,7 +855,21 @@ function ModulePage({ path }: { path: string }) {
                   </div>
                 ))}
             </div>
-            <div className="dialog-actions" style={{ marginTop: 24 }}>
+            <div className="dialog-actions" style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              {path === '/affectations' && Boolean(selectedRow.id) && (
+                <button
+                  type="button"
+                  className="button button-primary"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  disabled={downloadingPdfId === Number(selectedRow.id)}
+                  onClick={() => {
+                    handleDownloadPdf(Number(selectedRow.id), String(selectedRow.asset_tag ?? ''));
+                  }}
+                >
+                  <Download size={15} />
+                  {downloadingPdfId === Number(selectedRow.id) ? 'Génération en cours…' : 'Télécharger Fiche d’Attribution (PDF)'}
+                </button>
+              )}
               <button className="button button-secondary" onClick={() => setSelectedRow(null)}>
                 Fermer
               </button>
@@ -886,7 +930,7 @@ function ModulePage({ path }: { path: string }) {
                       </span>
                     </th>
                   ))}
-                  <th style={{ width: 40, textAlign: 'center' }}>Détails</th>
+                  <th style={{ width: path === '/affectations' ? 105 : 45, textAlign: 'center' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -907,8 +951,28 @@ function ModulePage({ path }: { path: string }) {
                       }
                       return <td key={column.key}>{content}</td>;
                     })}
-                    <td style={{ textAlign: 'center', color: '#4d65e2' }}>
-                      <Eye size={15} />
+                    <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+                        {path === '/affectations' && (
+                          <button
+                            type="button"
+                            className="button button-secondary"
+                            style={{ padding: '2px 8px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4, height: 26 }}
+                            title="Télécharger la fiche d'attribution PDF"
+                            disabled={downloadingPdfId === Number(row.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDownloadPdf(Number(row.id), String(row.asset_tag ?? ''));
+                            }}
+                          >
+                            <Download size={12} />
+                            {downloadingPdfId === Number(row.id) ? '...' : 'PDF'}
+                          </button>
+                        )}
+                        <span style={{ color: '#4d65e2', display: 'inline-flex', alignItems: 'center' }} title="Détails">
+                          <Eye size={15} />
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -942,8 +1006,29 @@ function CreateItemDialog({
   const [values, setValues] = useState<Record<string, string | boolean>>(() => Object.fromEntries(
     fields.map((field) => [field.name, field.type === 'checkbox' ? false : field.type === 'select' ? field.options?.[0] ?? '' : '']),
   ));
+  const [assetOptions, setAssetOptions] = useState<Array<{ id: number; label: string }>>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (fields.some((f) => f.name === 'asset_id')) {
+      apiRequest<unknown>('/assets?limit=150', { token })
+        .then((res) => {
+          const list = extractRows(res);
+          const opts = list.map((a) => {
+            const tag = String(a.asset_tag ?? a['Nom Machine'] ?? a.nom_machine ?? a.id);
+            const desc = [a.marque, a.modele].filter(Boolean).join(' ');
+            const statut = a.statut ? ` [${a.statut}]` : '';
+            return {
+              id: Number(a.id),
+              label: `${tag}${desc ? ` — ${desc}` : ''}${statut}`,
+            };
+          });
+          setAssetOptions(opts);
+        })
+        .catch(() => {});
+    }
+  }, [fields, token]);
 
   useEffect(() => {
     function closeOnEscape(event: KeyboardEvent) {
@@ -1002,7 +1087,20 @@ function CreateItemDialog({
                 ) : (
                   <>
                     <span>{field.label}{field.required && <i> *</i>}</span>
-                    {field.type === 'textarea' ? (
+                    {field.name === 'asset_id' && assetOptions.length > 0 ? (
+                      <select
+                        required={field.required}
+                        value={String(values[field.name] ?? '')}
+                        onChange={(event) => setValues((current) => ({ ...current, [field.name]: event.target.value }))}
+                      >
+                        <option value="">-- Choisir un équipement ({assetOptions.length} dans le parc) --</option>
+                        {assetOptions.map((opt) => (
+                          <option key={opt.id} value={opt.id}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : field.type === 'textarea' ? (
                       <textarea required={field.required} value={String(values[field.name] ?? '')} placeholder={field.placeholder} onChange={(event) => setValues((current) => ({ ...current, [field.name]: event.target.value }))} />
                     ) : field.type === 'select' ? (
                       <select required={field.required} value={String(values[field.name] ?? '')} onChange={(event) => setValues((current) => ({ ...current, [field.name]: event.target.value }))}>

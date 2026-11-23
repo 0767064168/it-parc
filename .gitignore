@@ -17,3 +17,6 @@ node_modules/
 local.properties
 .env
 backend/.env
+logs/
+*.log
+
