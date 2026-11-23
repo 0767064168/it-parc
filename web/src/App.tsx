@@ -29,6 +29,10 @@ import {
   Ticket,
   Users,
   X,
+  Sun,
+  Moon,
+  Eye,
+  ArrowUpDown,
   type LucideIcon,
 } from 'lucide-react';
 import { Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
@@ -380,7 +384,19 @@ function AppLayout() {
     return true;
   });
 
-  useEffect(() => setMobileMenuOpen(false), [location.pathname]);
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    return localStorage.getItem('parc-it-theme') === 'dark';
+  });
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      localStorage.setItem('parc-it-theme', 'dark');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+      localStorage.setItem('parc-it-theme', 'light');
+    }
+  }, [darkMode]);
 
   return (
     <div className="app-shell">
@@ -413,6 +429,14 @@ function AppLayout() {
           <button className="icon-button mobile-menu-button" onClick={() => setMobileMenuOpen(true)} aria-label="Ouvrir le menu"><Menu size={21} /></button>
           <div className="breadcrumb"><span>Parc informatique</span><span className="breadcrumb-separator">/</span><strong>{title}</strong></div>
           <div className="topbar-actions">
+            <button
+              className="theme-toggle-btn"
+              onClick={() => setDarkMode(!darkMode)}
+              title={darkMode ? 'Passer en mode clair' : 'Passer en mode sombre'}
+              aria-label="Basculer le thème"
+            >
+              {darkMode ? <Sun size={17} /> : <Moon size={17} />}
+            </button>
             <span className="environment-pill"><span /> En ligne</span>
             <div className="icon-button notification-button" aria-hidden="true"><Bell size={19} /></div>
             <div className="topbar-user"><div className="avatar avatar-small">{initials(displayName, user?.username)}</div><ChevronDown size={15} /></div>
@@ -581,9 +605,19 @@ function ComplianceRow({ label, value = 0, total = 0 }: { label: string; value?:
 
 function statusTone(value?: string) {
   const normalized = value?.toLowerCase() ?? '';
-  if (normalized.includes('service') || normalized.includes('actif')) return 'status-green';
-  if (normalized.includes('maintenance')) return 'status-amber';
-  if (normalized.includes('hors') || normalized.includes('réforme')) return 'status-red';
+  if (normalized.includes('service') || normalized.includes('actif') || normalized.includes('resolu') || normalized.includes('cloture')) return 'status-green';
+  if (normalized.includes('maintenance') || normalized.includes('cours') || normalized.includes('attente')) return 'status-amber';
+  if (normalized.includes('hors') || normalized.includes('réforme') || normalized.includes('reforme') || normalized.includes('rejete')) return 'status-red';
+  if (normalized.includes('stock') || normalized.includes('nouveau') || normalized.includes('ouvert')) return 'status-blue';
+  return 'status-gray';
+}
+
+function priorityBadge(value?: string) {
+  const normalized = value?.toLowerCase() ?? '';
+  if (normalized.includes('critique') || normalized.includes('urgente')) return 'badge-critique';
+  if (normalized.includes('haute') || normalized.includes('elevee')) return 'badge-haute';
+  if (normalized.includes('moyenne')) return 'badge-moyenne';
+  if (normalized.includes('basse') || normalized.includes('faible')) return 'badge-basse';
   return 'status-gray';
 }
 
@@ -639,7 +673,29 @@ function ModulePage({ path }: { path: string }) {
   const [query, setQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
   const [page, setPage] = useState(1);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
+  const [sortField, setSortField] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  const sortedRows = useMemo(() => {
+    if (!sortField) return rows;
+    return [...rows].sort((a, b) => {
+      const valA = String(getPath(a, sortField) ?? '').toLowerCase();
+      const valB = String(getPath(b, sortField) ?? '').toLowerCase();
+      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [rows, sortField, sortOrder]);
+
+  function handleSort(key: string) {
+    if (sortField === key) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(key);
+      setSortOrder('asc');
+    }
+  }
   const [createOpen, setCreateOpen] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -686,6 +742,36 @@ function ModulePage({ path }: { path: string }) {
 
   return (
     <div className="module-page">
+      {selectedRow && (
+        <div className="dialog-backdrop" onClick={() => setSelectedRow(null)}>
+          <div className="detail-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="dialog-heading">
+              <div>
+                <h2>Détails — {details.title}</h2>
+                <p>Consultez l'ensemble des informations enregistrées</p>
+              </div>
+              <button className="icon-button dialog-close" onClick={() => setSelectedRow(null)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="detail-grid">
+              {Object.entries(selectedRow)
+                .filter(([k, v]) => typeof v !== 'object' && v !== null && k !== 'deleted_at')
+                .map(([key, val]) => (
+                  <div className="detail-item" key={key}>
+                    <span>{key.replace(/_/g, ' ')}</span>
+                    <strong>{String(val)}</strong>
+                  </div>
+                ))}
+            </div>
+            <div className="dialog-actions" style={{ marginTop: 24 }}>
+              <button className="button button-secondary" onClick={() => setSelectedRow(null)}>
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {createOpen && definition.createFields && (
         <CreateItemDialog
           definition={definition}
@@ -724,17 +810,48 @@ function ModulePage({ path }: { path: string }) {
         {loading ? <div className="loading-lines"><i /><i /><i /></div> : (
           <div className="table-scroll module-table-scroll">
             <table className="data-table module-table">
-              <thead><tr>{definition.columns.map((column) => <th key={column.key}>{column.label}</th>)}</tr></thead>
+              <thead>
+                <tr>
+                  {definition.columns.map((column) => (
+                    <th
+                      key={column.key}
+                      onClick={() => handleSort(column.key)}
+                      className="th-sortable"
+                      title="Cliquer pour trier"
+                    >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                        {column.label}
+                        <ArrowUpDown size={11} style={{ opacity: sortField === column.key ? 1 : 0.3 }} />
+                      </span>
+                    </th>
+                  ))}
+                  <th style={{ width: 40, textAlign: 'center' }}>Détails</th>
+                </tr>
+              </thead>
               <tbody>
-                {rows.map((row, index) => (
-                  <tr key={String(row.id ?? row.asset_tag ?? row.numero ?? index)}>
+                {sortedRows.map((row, index) => (
+                  <tr
+                    key={String(row.id ?? row.asset_tag ?? row.numero ?? index)}
+                    onClick={() => setSelectedRow(row)}
+                    title="Cliquer pour voir la fiche détaillée"
+                  >
                     {definition.columns.map((column) => {
                       const value = getPath(row, column.key);
-                      return <td key={column.key}>{column.key === 'statut' ? <span className={`status-badge ${statusTone(cellText(value))}`}>{cellText(value)}</span> : cellText(value)}</td>;
+                      const text = cellText(value);
+                      let content = text;
+                      if (column.key === 'statut' || column.key.endsWith('.statut')) {
+                        content = <span className={`status-badge ${statusTone(text)}`}>{text}</span>;
+                      } else if (column.key === 'priorite' || column.key.endsWith('.priorite')) {
+                        content = <span className={`status-badge ${priorityBadge(text)}`}>{text}</span>;
+                      }
+                      return <td key={column.key}>{content}</td>;
                     })}
+                    <td style={{ textAlign: 'center', color: '#4d65e2' }}>
+                      <Eye size={15} />
+                    </td>
                   </tr>
                 ))}
-                {!rows.length && !error && <tr><td colSpan={definition.columns.length}><EmptyState text="Aucun résultat trouvé." /></td></tr>}
+                {!sortedRows.length && !error && <tr><td colSpan={definition.columns.length + 1}><EmptyState text="Aucun résultat trouvé." /></td></tr>}
               </tbody>
             </table>
           </div>
