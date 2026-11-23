@@ -15,11 +15,13 @@ function getPool() {
     if (!connectionString) {
       throw new Error('SUPABASE_DB_URL (ou DATABASE_URL) est requis dans les variables d\'environnement pour se connecter à la base de données.');
     }
+    const isVercel = !!process.env.VERCEL;
     _pool = new Pool({
       connectionString,
       ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
-      max: parseInt(process.env.DB_POOL_SIZE, 10) || 10,
-      connectionTimeoutMillis: 10000,
+      max: parseInt(process.env.DB_POOL_SIZE, 10) || (isVercel ? 2 : 10),
+      connectionTimeoutMillis: parseInt(process.env.DB_TIMEOUT_MS, 10) || 25000,
+      idleTimeoutMillis: 30000,
     });
     _pool.on('error', (err) => {
       logger.error(`Erreur inattendue du pool PostgreSQL: ${err.message}`);
