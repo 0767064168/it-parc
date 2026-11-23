@@ -441,8 +441,14 @@ function AppLayout() {
               {darkMode ? <Sun size={17} /> : <Moon size={17} />}
             </button>
             <span className="environment-pill"><span /> En ligne</span>
+            <Link to="/search" className="icon-button" title="Recherche rapide" aria-label="Recherche">
+              <Search size={18} />
+            </Link>
             <div className="icon-button notification-button" aria-hidden="true"><Bell size={19} /></div>
-            <div className="topbar-user"><div className="avatar avatar-small">{initials(displayName, user?.username)}</div><ChevronDown size={15} /></div>
+            <Link to="/profile" className="topbar-user" title="Voir mon profil">
+              <div className="avatar avatar-small">{initials(displayName, user?.username)}</div>
+              <ChevronDown size={15} />
+            </Link>
           </div>
         </header>
         <main className="page-content">
