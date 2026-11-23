@@ -35,6 +35,8 @@ import {
   ArrowUpDown,
   Building2,
   PieChart,
+  Pencil,
+  Trash2,
   type LucideIcon,
 } from 'lucide-react';
 import { Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
@@ -94,6 +96,8 @@ type ModuleDefinition = {
   paginated?: boolean;
   createFields?: FormFieldDefinition[];
   adminOnlyCreate?: boolean;
+  editFields?: FormFieldDefinition[];
+  adminOnlyDelete?: boolean;
   wrapAsset?: boolean;
 };
 
@@ -124,6 +128,17 @@ const modules: Record<string, ModuleDefinition> = {
       { name: 'statut', label: 'Statut initial', type: 'select', options: ['en_service', 'en_stock', 'en_maintenance', 'hors_service', 'reforme'] },
       { name: 'notes', label: 'Notes ou observations', type: 'textarea' },
     ],
+    editFields: [
+      { name: 'asset_tag', label: 'Référence d’inventaire', required: true },
+      { name: 'type', label: 'Type d’équipement', type: 'select', options: ['laptop', 'desktop', 'serveur', 'ecran', 'imprimante', 'tablette', 'smartphone', 'reseau'], required: true },
+      { name: 'marque', label: 'Marque', required: true },
+      { name: 'modele', label: 'Modèle' },
+      { name: 'site', label: 'Site', type: 'select', options: ['Bouaké', 'Abidjan', 'Yamoussoukro', 'Katiola', 'Azaguié', 'Djeboa'] },
+      { name: 'departement', label: 'Département', type: 'select', options: ['Direction IT', 'Comptabilité', 'Commercial', 'RH', 'Logistique', 'Direction Générale'] },
+      { name: 'statut', label: 'Statut', type: 'select', options: ['en_service', 'en_stock', 'en_maintenance', 'hors_service', 'reforme'] },
+      { name: 'notes', label: 'Notes ou observations', type: 'textarea' },
+    ],
+    adminOnlyDelete: true,
     columns: [
       { key: 'asset_tag', label: 'Référence' }, { key: 'type', label: 'Type' },
       { key: 'marque', label: 'Marque' }, { key: 'modele', label: 'Modèle' },
@@ -153,6 +168,16 @@ const modules: Record<string, ModuleDefinition> = {
       { name: 'ancien_utilisateur', label: 'Ancien Utilisateur (si réattribution)', placeholder: 'Nom et prénom' },
       { name: 'motif', label: 'Motif / Bon de commande / Notes', type: 'textarea', placeholder: 'N° Bon de commande, motif d\'attribution…' },
     ],
+    editFields: [
+      { name: 'nom', label: 'Nom utilisateur', required: true },
+      { name: 'prenom', label: 'Prénom utilisateur', required: true },
+      { name: 'departement', label: 'Département', type: 'select', options: ['Direction IT', 'CAJOOMA', 'COMPTABILITE', 'Commercial', 'RH', 'Logistique', 'Direction Générale'] },
+      { name: 'site', label: 'Site / Localisation', type: 'select', options: ['BOUAKE', 'ABIDJAN', 'BOUAFLE', 'KATIOLA', 'AZAGUIE', 'DJEBOA', 'YAMOUSSOUKRO'] },
+      { name: 'date_attribution', label: 'Date d’attribution', type: 'date', required: true },
+      { name: 'date_retrait', label: 'Date de retrait', type: 'date' },
+      { name: 'motif', label: 'Motif / Notes', type: 'textarea' },
+      { name: 'actif', label: 'Affectation active', type: 'checkbox' },
+    ],
   },
   '/tickets': {
     title: 'Tickets IT', subtitle: 'Demandes et incidents', endpoint: '/tickets', canSearch: true,
@@ -178,7 +203,17 @@ const modules: Record<string, ModuleDefinition> = {
       { key: 'cout', label: 'Coût' },
     ],
     adminOnlyCreate: true,
+    adminOnlyDelete: true,
     createFields: [
+      { name: 'nom', label: 'Nom du logiciel', required: true },
+      { name: 'editeur', label: 'Éditeur' },
+      { name: 'cle_activation', label: 'Clé d’activation' },
+      { name: 'date_expiration', label: 'Date d’expiration', type: 'date' },
+      { name: 'quota_max', label: 'Nombre de licences', type: 'number' },
+      { name: 'cout', label: 'Coût', type: 'number' },
+      { name: 'notes', label: 'Notes', type: 'textarea' },
+    ],
+    editFields: [
       { name: 'nom', label: 'Nom du logiciel', required: true },
       { name: 'editeur', label: 'Éditeur' },
       { name: 'cle_activation', label: 'Clé d’activation' },
@@ -385,6 +420,8 @@ function AppLayout() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const [installPrompt, setInstallPrompt] = useState<(Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> }) | null>(null);
   const title = location.pathname === '/' ? 'Tableau de bord' : pageTitles[location.pathname]?.title ?? 'Mon profil';
   const displayName = [user?.prenom, user?.nom].filter(Boolean).join(' ') || user?.username || 'Utilisateur';
   const role = (user?.role ?? 'lecteur').toLowerCase();
@@ -409,8 +446,41 @@ function AppLayout() {
     }
   }, [darkMode]);
 
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    const handleInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> });
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('beforeinstallprompt', handleInstallPrompt);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('beforeinstallprompt', handleInstallPrompt);
+    };
+  }, []);
+
+  async function installApp() {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    if (choice.outcome === 'accepted') setInstallPrompt(null);
+  }
+
   return (
     <div className="app-shell">
+      {!isOnline && (
+        <div className="offline-banner" role="status">
+          <CircleAlert size={16} /> Hors connexion — certaines données peuvent être indisponibles.
+        </div>
+      )}
       {mobileMenuOpen && <button className="mobile-backdrop" aria-label="Fermer le menu" onClick={() => setMobileMenuOpen(false)} />}
       <aside className={`sidebar ${mobileMenuOpen ? 'sidebar-open' : ''}`}>
         <Link className="brand" to="/">
@@ -420,7 +490,7 @@ function AppLayout() {
         <div className="sidebar-section-label">ESPACE DE TRAVAIL</div>
         <nav className="side-nav" aria-label="Navigation principale">
           {visibleNavigation.map(({ label, path, icon: Icon }) => (
-            <NavLink key={path} to={path} end={path === '/'} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
+            <NavLink key={path} to={path} end={path === '/'} onClick={() => setMobileMenuOpen(false)} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
               <Icon size={18} strokeWidth={1.8} /><span>{label}</span>
             </NavLink>
           ))}
@@ -440,6 +510,11 @@ function AppLayout() {
           <button className="icon-button mobile-menu-button" onClick={() => setMobileMenuOpen(true)} aria-label="Ouvrir le menu"><Menu size={21} /></button>
           <div className="breadcrumb"><span>Parc informatique</span><span className="breadcrumb-separator">/</span><strong>{title}</strong></div>
           <div className="topbar-actions">
+            {installPrompt && (
+              <button className="install-button" onClick={() => void installApp()} title="Installer l’application">
+                <ArrowDownToLine size={15} /><span>Installer</span>
+              </button>
+            )}
             <button
               className="theme-toggle-btn"
               onClick={() => setDarkMode(!darkMode)}
@@ -448,7 +523,7 @@ function AppLayout() {
             >
               {darkMode ? <Sun size={17} /> : <Moon size={17} />}
             </button>
-            <span className="environment-pill"><span /> En ligne</span>
+            <span className={`environment-pill ${isOnline ? '' : 'offline'}`}><span /> {isOnline ? 'En ligne' : 'Hors ligne'}</span>
             <Link to="/search" className="icon-button" title="Recherche rapide" aria-label="Recherche">
               <Search size={18} />
             </Link>
@@ -509,8 +584,8 @@ function DashboardPage() {
   const cards = useMemo(() => [
     { label: 'Équipements recensés', value: total, icon: Laptop, tone: 'blue', note: 'Total du parc' },
     { label: 'En service', value: stats?.totaux?.en_service ?? 0, icon: Activity, tone: 'green', note: 'Équipements actifs' },
-    { label: 'En maintenance', value: stats?.totaux?.en_maintenance ?? 0, icon: Settings, tone: 'amber', note: 'Suivi en cours' },
-    { label: 'Alertes de sécurité', value: stats?.non_conformes ?? 0, icon: ShieldCheck, tone: 'red', note: 'À vérifier' },
+    { label: 'En maintenance', value: stats?.totaux?.en_maintenance ?? 0, icon: Settings, tone: 'yellow', note: 'Suivi en cours' },
+    { label: 'Alertes de sécurité', value: stats?.non_conformes ?? 0, icon: ShieldCheck, tone: 'orange', note: 'À vérifier' },
   ], [stats, total]);
 
   return (
@@ -685,6 +760,24 @@ function EmptyState({ text }: { text: string }) {
   return <div className="empty-state"><Archive size={19} /><span>{text}</span></div>;
 }
 
+function getEditFieldValue(record: Record<string, unknown>, field: FormFieldDefinition) {
+  const asset = asRecord(record.asset);
+  const user = asRecord(record.user);
+  const values: Record<string, unknown> = {
+    asset_tag: record.asset_tag ?? record['Nom Machine'],
+    asset_id: record.asset_id ?? asset?.id,
+    nom: record.user_nom ?? user?.nom ?? record.nom,
+    prenom: record.user_prenom ?? user?.prenom ?? record.prenom,
+    departement: record.departement ?? user?.departement,
+    site: record.site ?? user?.site,
+  };
+  const value = values[field.name] ?? record[field.name];
+  if (field.type === 'checkbox') return value === true || value === 1 || value === '1';
+  if (value === null || value === undefined) return '';
+  const text = String(value);
+  return field.type === 'date' ? text.slice(0, 10) : text;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -768,6 +861,7 @@ function ModulePage({ path }: { path: string }) {
     }
   }
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingRow, setEditingRow] = useState<Record<string, unknown> | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -804,6 +898,43 @@ function ModulePage({ path }: { path: string }) {
       ? role === 'admin'
       : path === '/tickets' || role === 'admin' || role === 'technicien'),
   );
+  const canEdit = Boolean(
+    definition.editFields &&
+    (path === '/affectations'
+      ? role === 'admin' || role === 'technicien'
+      : path === '/assets'
+        ? role === 'admin' || role === 'technicien'
+        : path === '/licences' && role === 'admin'),
+  );
+  const canDelete = Boolean(
+    definition.editFields &&
+    (definition.adminOnlyDelete
+      ? role === 'admin'
+      : path === '/affectations' && (role === 'admin' || role === 'technicien')),
+  );
+
+  async function deleteRow(row: Record<string, unknown>) {
+    const id = Number(row.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      setError('Impossible de supprimer cet élément : identifiant invalide.');
+      return;
+    }
+    const label = String(row.asset_tag ?? row.nom ?? row.titre ?? `#${id}`);
+    const action = path === '/assets' ? 'archiver' : 'supprimer';
+    if (!window.confirm(`Voulez-vous vraiment ${action} « ${label} » ?`)) return;
+
+    try {
+      await apiRequest<unknown>(`${definition.endpoint}/${id}`, {
+        method: 'DELETE',
+        token,
+        ...(path === '/assets' ? { body: { motif: 'Archivé depuis l’inventaire' } } : {}),
+      });
+      setSuccessMessage(path === '/assets' ? 'Équipement archivé.' : 'Enregistrement supprimé.');
+      setRefreshKey((current) => current + 1);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'La suppression a échoué.');
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -890,6 +1021,20 @@ function ModulePage({ path }: { path: string }) {
           }}
         />
       )}
+      {editingRow && definition.editFields && (
+        <CreateItemDialog
+          definition={definition}
+          token={token}
+          mode="edit"
+          initialRecord={editingRow}
+          onClose={() => setEditingRow(null)}
+          onCreated={() => {
+            setEditingRow(null);
+            setSuccessMessage('Enregistrement modifié avec succès.');
+            setRefreshKey((current) => current + 1);
+          }}
+        />
+      )}
       <div className="page-heading">
         <div><span className="eyebrow">GESTION DU PARC</span><h1>{details.title}</h1><p>{details.subtitle}</p></div>
         <div className="heading-actions">
@@ -930,7 +1075,7 @@ function ModulePage({ path }: { path: string }) {
                       </span>
                     </th>
                   ))}
-                  <th style={{ width: path === '/affectations' ? 105 : 45, textAlign: 'center' }}>Actions</th>
+                  <th style={{ width: canEdit || canDelete || path === '/affectations' ? 180 : 45, textAlign: 'center' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -969,6 +1114,34 @@ function ModulePage({ path }: { path: string }) {
                             {downloadingPdfId === Number(row.id) ? '...' : 'PDF'}
                           </button>
                         )}
+                        {canEdit && (
+                          <button
+                            type="button"
+                            className="button button-secondary row-action-button"
+                            title="Modifier"
+                            aria-label={`Modifier ${String(row.asset_tag ?? row.nom ?? row.id)}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setEditingRow(row);
+                            }}
+                          >
+                            <Pencil size={13} /><span>Modifier</span>
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            type="button"
+                            className="button button-danger row-action-button"
+                            title={path === '/assets' ? 'Archiver' : 'Supprimer'}
+                            aria-label={`${path === '/assets' ? 'Archiver' : 'Supprimer'} ${String(row.asset_tag ?? row.nom ?? row.id)}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void deleteRow(row);
+                            }}
+                          >
+                            <Trash2 size={13} /><span>{path === '/assets' ? 'Archiver' : 'Supprimer'}</span>
+                          </button>
+                        )}
                         <span style={{ color: '#4d65e2', display: 'inline-flex', alignItems: 'center' }} title="Détails">
                           <Eye size={15} />
                         </span>
@@ -994,24 +1167,33 @@ function ModulePage({ path }: { path: string }) {
 function CreateItemDialog({
   definition,
   token,
+  mode = 'create',
+  initialRecord,
   onClose,
   onCreated,
 }: {
   definition: ModuleDefinition;
   token: string | null;
+  mode?: 'create' | 'edit';
+  initialRecord?: Record<string, unknown>;
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const fields = definition.createFields ?? [];
+  const fields = mode === 'edit' ? definition.editFields ?? [] : definition.createFields ?? [];
   const [values, setValues] = useState<Record<string, string | boolean>>(() => Object.fromEntries(
-    fields.map((field) => [field.name, field.type === 'checkbox' ? false : field.type === 'select' ? field.options?.[0] ?? '' : '']),
+    fields.map((field) => [
+      field.name,
+      mode === 'edit' && initialRecord
+        ? getEditFieldValue(initialRecord, field)
+        : field.type === 'checkbox' ? false : field.type === 'select' ? field.options?.[0] ?? '' : '',
+    ]),
   ));
   const [assetOptions, setAssetOptions] = useState<Array<{ id: number; label: string }>>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (fields.some((f) => f.name === 'asset_id')) {
+    if (mode === 'create' && fields.some((f) => f.name === 'asset_id')) {
       apiRequest<unknown>('/assets?limit=150', { token })
         .then((res) => {
           const list = extractRows(res);
@@ -1028,7 +1210,7 @@ function CreateItemDialog({
         })
         .catch(() => {});
     }
-  }, [fields, token]);
+  }, [fields, mode, token]);
 
   useEffect(() => {
     function closeOnEscape(event: KeyboardEvent) {
@@ -1041,25 +1223,37 @@ function CreateItemDialog({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
-    if (definition.endpoint === '/users' && Boolean(values.username) !== Boolean(values.password)) {
+    if (mode === 'edit' && (!Number.isInteger(Number(initialRecord?.id)) || Number(initialRecord?.id) <= 0)) {
+      setError('Impossible de modifier cet élément : identifiant invalide.');
+      return;
+    }
+    if (mode === 'create' && definition.endpoint === '/users' && Boolean(values.username) !== Boolean(values.password)) {
       setError('Pour créer un accès, renseignez à la fois l’identifiant et le mot de passe.');
       return;
     }
     setSaving(true);
     try {
-      const body = fields.reduce<Record<string, string | number | boolean>>((result, field) => {
+      const body = fields.reduce<Record<string, string | number | boolean | null>>((result, field) => {
         const value = values[field.name];
         if (field.type === 'checkbox') {
           result[field.name] = Boolean(value);
           return result;
         }
         const text = String(value ?? '').trim();
-        if (!text || (field.name === 'role' && !values.username)) return result;
+        if (!text) {
+          if (mode === 'edit' && !field.required) result[field.name] = null;
+          return result;
+        }
+        if (field.name === 'role' && !values.username) return result;
         result[field.name] = field.type === 'number' ? Number(text) : text;
         return result;
       }, {});
-      await apiRequest<unknown>(definition.endpoint, {
-        method: 'POST',
+      if (mode === 'edit' && definition.endpoint === '/affectations' && initialRecord?.user_id) {
+        body.user_id = Number(initialRecord.user_id);
+      }
+      const id = Number(initialRecord?.id);
+      await apiRequest<unknown>(mode === 'edit' ? `${definition.endpoint}/${id}` : definition.endpoint, {
+        method: mode === 'edit' ? 'PUT' : 'POST',
         token,
         body: definition.wrapAsset ? { asset: body } : body,
       });
@@ -1075,7 +1269,7 @@ function CreateItemDialog({
     <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}>
       <section className="create-dialog" role="dialog" aria-modal="true" aria-labelledby="create-dialog-title">
         <div className="dialog-heading">
-          <div><span className="eyebrow">NOUVEL ENREGISTREMENT</span><h2 id="create-dialog-title">Ajouter à {definition.title.toLowerCase()}</h2></div>
+          <div><span className="eyebrow">{mode === 'edit' ? 'MODIFICATION' : 'NOUVEL ENREGISTREMENT'}</span><h2 id="create-dialog-title">{mode === 'edit' ? `Modifier ${definition.title.toLowerCase()}` : `Ajouter à ${definition.title.toLowerCase()}`}</h2></div>
           <button className="icon-button dialog-close" onClick={onClose} disabled={saving} aria-label="Fermer"><X size={19} /></button>
         </div>
         <form className="create-form" onSubmit={submit}>
@@ -1104,6 +1298,9 @@ function CreateItemDialog({
                       <textarea required={field.required} value={String(values[field.name] ?? '')} placeholder={field.placeholder} onChange={(event) => setValues((current) => ({ ...current, [field.name]: event.target.value }))} />
                     ) : field.type === 'select' ? (
                       <select required={field.required} value={String(values[field.name] ?? '')} onChange={(event) => setValues((current) => ({ ...current, [field.name]: event.target.value }))}>
+                        {mode === 'edit' && values[field.name] && !field.options?.includes(String(values[field.name])) && (
+                          <option value={String(values[field.name])}>{String(values[field.name])}</option>
+                        )}
                         {(field.options ?? []).map((option) => <option value={option} key={option}>{option}</option>)}
                       </select>
                     ) : (
@@ -1125,7 +1322,7 @@ function CreateItemDialog({
           {error && <div className="form-error" role="alert">{error}</div>}
           <div className="dialog-actions">
             <button type="button" className="button button-secondary" onClick={onClose} disabled={saving}>Annuler</button>
-            <button className="button button-primary" disabled={saving}>{saving ? <span className="spinner" /> : <Plus size={14} />}{saving ? 'Enregistrement…' : 'Créer'}</button>
+            <button className="button button-primary" disabled={saving}>{saving ? <span className="spinner" /> : mode === 'edit' ? <Pencil size={14} /> : <Plus size={14} />}{saving ? 'Enregistrement…' : mode === 'edit' ? 'Enregistrer' : 'Créer'}</button>
           </div>
         </form>
       </section>
@@ -1209,6 +1406,15 @@ function ReportsPage() {
 
   const maxType = Math.max(...typeData.map((d) => Number(d.count || 0)), 1);
   const maxStatut = Math.max(...statutData.map((d) => Number(d.count || 0)), 1);
+  const statusCount = (status: string) => statutData
+    .filter((item) => String(item.statut ?? '').toLowerCase() === status)
+    .reduce((sum, item) => sum + Number(item.count || 0), 0);
+  const reportCards = [
+    { label: 'Équipements recensés', value: typeData.reduce((sum, item) => sum + Number(item.count || 0), 0), icon: Laptop, tone: 'blue', note: 'Total de l’inventaire' },
+    { label: 'En service', value: statusCount('en_service'), icon: Activity, tone: 'green', note: 'Équipements opérationnels' },
+    { label: 'En maintenance', value: statusCount('en_maintenance'), icon: Settings, tone: 'yellow', note: 'À suivre' },
+    { label: 'Stocks critiques', value: consommablesData.filter((item) => Number(item.quantite || 0) <= Number(item.seuil_alerte || 0)).length, icon: CircleAlert, tone: 'orange', note: 'Consommables à réapprovisionner' },
+  ];
 
   return (
     <div>
@@ -1225,6 +1431,17 @@ function ReportsPage() {
       {loading ? (
         <section className="panel"><div className="loading-lines"><i /><i /><i /></div></section>
       ) : (
+        <>
+        <div className="stats-grid report-kpi-grid">
+          {reportCards.map(({ label, value, icon: Icon, tone, note }) => (
+            <article className="stat-card" key={label}>
+              <div className={`stat-icon ${tone}`}><Icon size={19} /></div>
+              <div className="stat-label">{label}</div>
+              <div className="stat-value">{value.toLocaleString('fr-FR')}</div>
+              <div className="stat-note">{note}</div>
+            </article>
+          ))}
+        </div>
         <div className="dashboard-columns">
           {/* Équipements par Statut */}
           <section className="panel">
@@ -1378,6 +1595,7 @@ function ReportsPage() {
             </div>
           </section>
         </div>
+        </>
       )}
     </div>
   );

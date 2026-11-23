@@ -172,6 +172,22 @@ async function update(req, res) {
         finalUserId = userResult.insertId;
       }
 
+      if (finalUserId && (nom !== undefined || prenom !== undefined || departement !== undefined || site !== undefined)) {
+        await conn.execute(
+          `UPDATE utilisateurs
+           SET nom = COALESCE(?, nom), prenom = COALESCE(?, prenom),
+               departement = COALESCE(?, departement), site = COALESCE(?, site)
+           WHERE id = ?`,
+          [
+            nom?.trim() || null,
+            prenom?.trim() || null,
+            departement?.trim() || null,
+            site?.trim() || null,
+            finalUserId,
+          ]
+        );
+      }
+
       let updateFields = [];
       let params = [];
 
