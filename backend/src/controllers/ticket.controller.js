@@ -8,7 +8,7 @@ const { query, transaction } = require('../config/db');
 const { success, error, paginated } = require('../utils/response');
 const logger = require('../utils/logger');
 const EmailService = require('../services/email.service');
-const XLSX = require('xlsx');
+const XLSX = require('@e965/xlsx');
 const fs = require('fs');
 const path = require('path');
 let PDFDocument;

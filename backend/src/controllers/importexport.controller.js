@@ -4,7 +4,7 @@
 // ============================================
 'use strict';
 
-const XLSX = require('xlsx');
+const XLSX = require('@e965/xlsx');
 const { query, transaction } = require('../config/db');
 const { success, error } = require('../utils/response');
 const logger = require('../utils/logger');
