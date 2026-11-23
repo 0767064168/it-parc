@@ -8,7 +8,14 @@ const { requirePermission } = require('../middlewares/roles');
 const router = express.Router();
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, process.env.UPLOAD_DIR || './uploads'),
+  destination: (req, file, cb) => {
+    const defaultDir = process.env.VERCEL ? '/tmp/uploads/imports' : './uploads/imports';
+    const dir = process.env.UPLOAD_DIR || defaultDir;
+    if (!fs.existsSync(dir)) {
+      try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
+    }
+    cb(null, dir);
+  },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
     cb(null, `import_${Date.now()}${ext}`);

@@ -12,7 +12,12 @@ const router = express.Router();
 // Configuration Multer pour les pièces jointes des assets
 const assetStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, process.env.ASSET_UPLOAD_DIR || './uploads/assets');
+    const defaultDir = process.env.VERCEL ? '/tmp/uploads/assets' : './uploads/assets';
+    const dir = process.env.ASSET_UPLOAD_DIR || defaultDir;
+    if (!fs.existsSync(dir)) {
+      try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
+    }
+    cb(null, dir);
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);

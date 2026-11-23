@@ -15,7 +15,12 @@ const router = express.Router();
 // ─── Multer — upload pièces jointes wiki ─────────────
 const wikiStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, process.env.WIKI_UPLOAD_DIR || './uploads/wiki');
+    const defaultDir = process.env.VERCEL ? '/tmp/uploads/wiki' : './uploads/wiki';
+    const dir = process.env.WIKI_UPLOAD_DIR || defaultDir;
+    if (!fs.existsSync(dir)) {
+      try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
+    }
+    cb(null, dir);
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
