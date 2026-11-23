@@ -33,6 +33,8 @@ import {
   Moon,
   Eye,
   ArrowUpDown,
+  Building2,
+  PieChart,
   type LucideIcon,
 } from 'lucide-react';
 import { Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
@@ -562,6 +564,49 @@ function DashboardPage() {
             <ComplianceRow label="BitLocker" value={stats?.securite?.bitlocker_ok} total={stats?.securite?.total_avec_securite} />
             <ComplianceRow label="Microsoft Intune" value={stats?.securite?.intune_ok} total={stats?.securite?.total_avec_securite} />
           </div>
+        </section>
+      </div>
+
+      <div className="dashboard-columns" style={{ marginTop: 16 }}>
+        <section className="panel">
+          <div className="panel-heading">
+            <div><h2>Répartition par site</h2><p>Implantation géographique des machines</p></div>
+            <div className="panel-heading-icon"><Building2 size={18} /></div>
+          </div>
+          {loading ? <div className="loading-lines"><i /><i /><i /></div> : (
+            <div className="bar-list">
+              {(stats?.par_site ?? []).slice(0, 6).map((item, index, list) => {
+                const max = Math.max(...list.map((entry) => entry.count), 1);
+                return (
+                  <div className="bar-item" key={`${item.site}-${index}`}>
+                    <div className="bar-item-top"><span>{item.site}</span><strong>{item.count} machine{item.count > 1 ? 's' : ''}</strong></div>
+                    <div className="bar-track"><span style={{ width: `${(item.count / max) * 100}%`, background: '#3b82f6' }} /></div>
+                  </div>
+                );
+              })}
+              {!stats?.par_site?.length && <EmptyState text="Aucune donnée de site disponible." />}
+            </div>
+          )}
+        </section>
+        <section className="panel">
+          <div className="panel-heading">
+            <div><h2>Répartition par département</h2><p>Direction et services utilisateurs</p></div>
+            <div className="panel-heading-icon green"><PieChart size={18} /></div>
+          </div>
+          {loading ? <div className="loading-lines"><i /><i /><i /></div> : (
+            <div className="bar-list">
+              {(stats?.par_departement ?? []).slice(0, 6).map((item, index, list) => {
+                const max = Math.max(...list.map((entry) => entry.count), 1);
+                return (
+                  <div className="bar-item" key={`${item.departement}-${index}`}>
+                    <div className="bar-item-top"><span>{item.departement}</span><strong>{item.count} machine{item.count > 1 ? 's' : ''}</strong></div>
+                    <div className="bar-track"><span className="green-fill" style={{ width: `${(item.count / max) * 100}%` }} /></div>
+                  </div>
+                );
+              })}
+              {!stats?.par_departement?.length && <EmptyState text="Aucune donnée de département disponible." />}
+            </div>
+          )}
         </section>
       </div>
 
