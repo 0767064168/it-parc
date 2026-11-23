@@ -1083,37 +1083,194 @@ function SearchPage() {
 
 function ReportsPage() {
   const { token } = useAuth();
-  const [report, setReport] = useState<unknown>(null);
+  const [report, setReport] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
-    apiRequest<unknown>('/dashboard/reports', { token })
+    apiRequest<Record<string, unknown>>('/dashboard/reports', { token })
       .then((result) => { if (active) setReport(result); })
       .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : 'Impossible de charger les rapports.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [token]);
 
-  const sections = asRecord(report);
+  const typeData = extractRows(report?.assets_by_type);
+  const statutData = extractRows(report?.assets_by_statut);
+  const licencesData = extractRows(report?.licences_utilisation);
+  const consommablesData = extractRows(report?.consommables_stock);
+
+  const maxType = Math.max(...typeData.map((d) => Number(d.count || 0)), 1);
+  const maxStatut = Math.max(...statutData.map((d) => Number(d.count || 0)), 1);
+
   return (
     <div>
-      <div className="page-heading"><div><span className="eyebrow">ANALYSE</span><h1>Rapports</h1><p>Indicateurs agrégés du parc informatique.</p></div></div>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">ANALYSE DU PARC</span>
+          <h1>Rapports & Indicateurs Clés</h1>
+          <p>Indicateurs décisionnels et suivi de conformité du parc informatique.</p>
+        </div>
+      </div>
+
       {error && <div className="alert alert-error" role="alert"><div><strong>Erreur de récupération des données</strong><span>{error}</span></div></div>}
-      {loading ? <section className="panel"><div className="loading-lines"><i /><i /><i /></div></section> : (
-        <div className="report-grid">
-          {sections && Object.entries(sections).map(([name, value]) => {
-            const records = extractRows(value);
-            const record = asRecord(value);
-            const summary = record ? Object.entries(record).filter(([, entry]) => typeof entry !== 'object') : [];
-            return <section className="panel report-card" key={name}>
-              <h2>{name.replace(/_/g, ' ')}</h2>
-              {records.length > 0 ? <div className="report-records">{records.slice(0, 8).map((item, index) => <div key={String(item.id ?? index)}>{Object.entries(item).slice(0, 3).map(([key, entry]) => <span key={key}><small>{key.replace(/_/g, ' ')}</small>{cellText(entry)}</span>)}</div>)}</div> :
-                summary.length ? <div className="report-summary">{summary.map(([key, entry]) => <div key={key}><span>{key.replace(/_/g, ' ')}</span><strong>{cellText(entry)}</strong></div>)}</div> : <EmptyState text="Aucune donnée." />}
-            </section>;
-          })}
-          {!sections && !error && <section className="panel"><EmptyState text="Aucune donnée de rapport disponible." /></section>}
+
+      {loading ? (
+        <section className="panel"><div className="loading-lines"><i /><i /><i /></div></section>
+      ) : (
+        <div className="dashboard-columns">
+          {/* Équipements par Statut */}
+          <section className="panel">
+            <div className="panel-heading">
+              <div>
+                <h2>État de Santé du Parc (Statuts)</h2>
+                <p>Répartition par condition opérationnelle</p>
+              </div>
+              <div className="panel-heading-icon green"><Activity size={18} /></div>
+            </div>
+            <div className="bar-list" style={{ marginTop: 18 }}>
+              {statutData.map((item, idx) => {
+                const count = Number(item.count || 0);
+                const pct = Math.round((count / maxStatut) * 100);
+                const st = String(item.statut || 'inconnu');
+                return (
+                  <div className="bar-item" key={idx}>
+                    <div className="bar-item-top">
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <span className={`status-badge ${statusTone(st)}`}>{st}</span>
+                      </span>
+                      <strong>{count} machine{count > 1 ? 's' : ''}</strong>
+                    </div>
+                    <div className="bar-track">
+                      <span style={{ width: `${pct}%`, background: st.includes('service') ? '#10b981' : st.includes('hors') ? '#ef4444' : '#f59e0b' }} />
+                    </div>
+                  </div>
+                );
+              })}
+              {!statutData.length && <EmptyState text="Aucune donnée de statut." />}
+            </div>
+          </section>
+
+          {/* Types d'équipements */}
+          <section className="panel">
+            <div className="panel-heading">
+              <div>
+                <h2>Parc par Type de Matériel</h2>
+                <p>Volume par catégorie de poste</p>
+              </div>
+              <div className="panel-heading-icon"><Laptop size={18} /></div>
+            </div>
+            <div className="bar-list" style={{ marginTop: 18 }}>
+              {typeData.map((item, idx) => {
+                const count = Number(item.count || 0);
+                const pct = Math.round((count / maxType) * 100);
+                return (
+                  <div className="bar-item" key={idx}>
+                    <div className="bar-item-top">
+                      <span style={{ textTransform: 'capitalize' }}>{String(item.type)}</span>
+                      <strong>{count} unité{count > 1 ? 's' : ''}</strong>
+                    </div>
+                    <div className="bar-track">
+                      <span style={{ width: `${pct}%`, background: '#3b82f6' }} />
+                    </div>
+                  </div>
+                );
+              })}
+              {!typeData.length && <EmptyState text="Aucun équipement recensé." />}
+            </div>
+          </section>
+
+          {/* Utilisation des Licences */}
+          <section className="panel" style={{ gridColumn: '1 / -1' }}>
+            <div className="panel-heading">
+              <div>
+                <h2>Taux d'Utilisation des Licences Logicielles</h2>
+                <p>Attributions actuelles par rapport aux quotas achetés</p>
+              </div>
+              <div className="panel-heading-icon green"><ShieldCheck size={18} /></div>
+            </div>
+            <div className="table-scroll" style={{ marginTop: 16 }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Logiciel</th>
+                    <th>Éditeur</th>
+                    <th>Postes attribués</th>
+                    <th>Quota Max</th>
+                    <th>Taux d'utilisation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {licencesData.map((lic, idx) => {
+                    const quota = Number(lic.quota_max || 0);
+                    const alloc = Number(lic.allocated || 0);
+                    const pct = quota > 0 ? Math.min(100, Math.round((alloc / quota) * 100)) : 0;
+                    return (
+                      <tr key={idx}>
+                        <td><strong>{String(lic.nom)}</strong></td>
+                        <td>{String(lic.editeur || '—')}</td>
+                        <td>{alloc}</td>
+                        <td>{quota || 'Illimité'}</td>
+                        <td style={{ minWidth: 140 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div className="bar-track" style={{ flex: 1 }}>
+                              <span style={{ width: `${pct}%`, background: pct > 90 ? '#ef4444' : pct > 75 ? '#f59e0b' : '#10b981' }} />
+                            </div>
+                            <span style={{ fontSize: 10, fontWeight: 700 }}>{pct}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {!licencesData.length && <tr><td colSpan={5}><EmptyState text="Aucune licence renseignée." /></td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* Alertes Consommables */}
+          <section className="panel" style={{ gridColumn: '1 / -1' }}>
+            <div className="panel-heading">
+              <div>
+                <h2>Niveaux de Stocks Consommables</h2>
+                <p>Surveillance des consommables par rapport au seuil critique</p>
+              </div>
+              <div className="panel-heading-icon"><Package size={18} /></div>
+            </div>
+            <div className="table-scroll" style={{ marginTop: 16 }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Consommable</th>
+                    <th>Quantité en stock</th>
+                    <th>Seuil d'alerte</th>
+                    <th>État du stock</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {consommablesData.map((item, idx) => {
+                    const qte = Number(item.quantite || 0);
+                    const seuil = Number(item.seuil_alerte || 0);
+                    const isLow = qte <= seuil;
+                    return (
+                      <tr key={idx}>
+                        <td><strong>{String(item.nom)}</strong></td>
+                        <td><span style={{ fontSize: 13, fontWeight: 700 }}>{qte}</span></td>
+                        <td>{seuil}</td>
+                        <td>
+                          <span className={`status-badge ${isLow ? 'status-red' : 'status-green'}`}>
+                            {isLow ? '⚠️ Stock critique' : '✅ Stock suffisant'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {!consommablesData.length && <tr><td colSpan={4}><EmptyState text="Aucun consommable enregistré." /></td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
         </div>
       )}
     </div>
