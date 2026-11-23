@@ -177,6 +177,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/affectations', affectationRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/import-export', importExportRoutes);
+app.use('/api/importexport', importExportRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/licences', licenceRoutes);
 app.use('/api/consommables', consommableRoutes);
