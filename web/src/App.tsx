@@ -44,6 +44,15 @@ import {
   FileSpreadsheet,
   History,
   AlertTriangle,
+  Monitor,
+  Smartphone,
+  Tv,
+  CreditCard,
+  Server,
+  Tablet,
+  MapPin,
+  Lock,
+  Shield,
   type LucideIcon,
 } from 'lucide-react';
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useSearchParams } from 'react-router-dom';
@@ -608,6 +617,19 @@ function roleLabel(role: string) {
   return 'LECTEUR';
 }
 
+function formatAssetType(type: string): { label: string; icon: LucideIcon } {
+  const t = (type || '').toLowerCase().trim();
+  if (t === 'laptop' || t === 'portable' || t === 'pc_portable') return { label: 'Ordinateurs Portables', icon: Laptop };
+  if (t === 'desktop' || t === 'fixe' || t === 'pc_fixe' || t === 'poste_fixe') return { label: 'Postes Fixes / Desktop', icon: Monitor };
+  if (t.includes('pax') || t.includes('tpe') || t.includes('terminal')) return { label: 'Terminaux PAX / TPE', icon: CreditCard };
+  if (t === 'ecran' || t === 'moniteur' || t === 'monitor') return { label: 'Écrans & Moniteurs', icon: Tv };
+  if (t === 'telephone' || t === 'smartphone' || t === 'mobile') return { label: 'Smartphones & Mobiles', icon: Smartphone };
+  if (t === 'imprimante' || t === 'printer' || t === 'copieur') return { label: 'Imprimantes & Copieurs', icon: Printer };
+  if (t === 'serveur' || t === 'server') return { label: 'Serveurs & Baies', icon: Server };
+  if (t === 'tablette' || t === 'tablet') return { label: 'Tablettes Tactiles', icon: Tablet };
+  return { label: type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' '), icon: HardDrive };
+}
+
 function DashboardPage() {
   const { token } = useAuth();
   const [stats, setStats] = useState<DashboardData | null>(null);
@@ -704,78 +726,195 @@ function DashboardPage() {
       </div>
 
       <div className="dashboard-columns">
-        <section className="panel">
+        <section className="panel pro-card">
           <div className="panel-heading">
-            <div><h2>Répartition du parc</h2><p>Équipements par catégorie</p></div>
+            <div>
+              <h2 style={{ fontSize: 14, fontWeight: 700 }}>Répartition du parc</h2>
+              <p style={{ fontSize: 11 }}>Équipements par catégorie matérielle</p>
+            </div>
             <div className="panel-heading-icon"><Boxes size={18} /></div>
           </div>
-          {loading ? <div className="loading-lines"><i /><i /><i /></div> : (
-            <div className="bar-list">
+          {loading ? (
+            <div className="loading-lines"><i /><i /><i /></div>
+          ) : (
+            <div className="pro-bar-list">
               {(stats?.par_type ?? []).slice(0, 6).map((item, index, list) => {
                 const max = Math.max(...list.map((entry) => entry.count), 1);
+                const info = formatAssetType(item.type);
+                const Icon = info.icon;
+                const pct = total > 0 ? Math.round((item.count / total) * 100) : 0;
                 return (
-                  <div className="bar-item" key={`${item.type}-${index}`}>
-                    <div className="bar-item-top"><span>{item.type}</span><strong>{item.count}</strong></div>
-                    <div className="bar-track"><span style={{ width: `${(item.count / max) * 100}%` }} /></div>
-                  </div>
+                  <Link
+                    to={`/assets?search=${encodeURIComponent(item.type)}`}
+                    className="pro-dashboard-row"
+                    key={`${item.type}-${index}`}
+                    title={`Voir les ${info.label}`}
+                  >
+                    <div className="pro-row-top">
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <div className="pro-icon-box blue">
+                          <Icon size={14} />
+                        </div>
+                        <span style={{ fontWeight: 600, fontSize: 12, color: '#1e293b' }}>
+                          {info.label}
+                        </span>
+                      </div>
+                      <div className="pro-metric-badge">
+                        <strong>{item.count}</strong>
+                        <span style={{ color: '#94a3b8', fontSize: 10, marginLeft: 4 }}>({pct}%)</span>
+                      </div>
+                    </div>
+                    <div className="pro-bar-track">
+                      <span
+                        style={{
+                          width: `${(item.count / max) * 100}%`,
+                          background: 'linear-gradient(90deg, #3b82f6 0%, #6366f1 100%)',
+                        }}
+                      />
+                    </div>
+                  </Link>
                 );
               })}
               {!stats?.par_type?.length && <EmptyState text="Aucune donnée de répartition disponible." />}
             </div>
           )}
         </section>
-        <section className="panel">
+
+        <section className="panel pro-card">
           <div className="panel-heading">
-            <div><h2>Conformité de sécurité</h2><p>État des protections du parc</p></div>
+            <div>
+              <h2 style={{ fontSize: 14, fontWeight: 700 }}>Conformité de sécurité</h2>
+              <p style={{ fontSize: 11 }}>État des protections et agents IT</p>
+            </div>
             <div className="panel-heading-icon green"><ShieldCheck size={18} /></div>
           </div>
-          <div className="compliance-score">
-            <div className="score-number">{loading ? '—' : `${Math.round(stats?.securite?.score_conformite ?? 0)}%`}</div>
-            <div><strong>Score de conformité</strong><span>Basé sur les équipements suivis</span></div>
+          
+          <div className="pro-compliance-score-box">
+            <div className="pro-score-circle">
+              <span className="pro-score-val">{loading ? '—' : `${Math.round(stats?.securite?.score_conformite ?? 0)}%`}</span>
+            </div>
+            <div className="pro-score-meta">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                <strong style={{ fontSize: 12, color: '#0f172a' }}>Score Global de Conformité</strong>
+                <span
+                  className={`status-badge ${(stats?.securite?.score_conformite ?? 0) >= 75 ? 'status-green' : (stats?.securite?.score_conformite ?? 0) >= 50 ? 'status-amber' : 'status-red'}`}
+                  style={{ fontSize: 9, padding: '2px 7px' }}
+                >
+                  {(stats?.securite?.score_conformite ?? 0) >= 75 ? 'Sécurité Conforme' : (stats?.securite?.score_conformite ?? 0) >= 50 ? 'Attention Requise' : 'Critique'}
+                </span>
+              </div>
+              <p style={{ margin: '4px 0 0', fontSize: 10, color: '#64748b' }}>
+                Audit en temps réel sur {stats?.securite?.total_avec_securite || total} équipements suivis
+              </p>
+            </div>
           </div>
-          <div className="compliance-list">
-            <ComplianceRow label="Microsoft Defender" value={stats?.securite?.defender_ok} total={stats?.securite?.total_avec_securite} />
-            <ComplianceRow label="BitLocker" value={stats?.securite?.bitlocker_ok} total={stats?.securite?.total_avec_securite} />
-            <ComplianceRow label="Microsoft Intune" value={stats?.securite?.intune_ok} total={stats?.securite?.total_avec_securite} />
+
+          <div className="pro-bar-list" style={{ marginTop: 10 }}>
+            <ComplianceRow label="Microsoft Defender (Antivirus)" value={stats?.securite?.defender_ok} total={stats?.securite?.total_avec_securite} icon={Shield} />
+            <ComplianceRow label="Chiffrement BitLocker" value={stats?.securite?.bitlocker_ok} total={stats?.securite?.total_avec_securite} icon={Lock} />
+            <ComplianceRow label="Microsoft Intune (MDM)" value={stats?.securite?.intune_ok} total={stats?.securite?.total_avec_securite} icon={Smartphone} />
           </div>
         </section>
       </div>
 
       <div className="dashboard-columns" style={{ marginTop: 16 }}>
-        <section className="panel">
+        <section className="panel pro-card">
           <div className="panel-heading">
-            <div><h2>Répartition par site</h2><p>Implantation géographique des machines</p></div>
+            <div>
+              <h2 style={{ fontSize: 14, fontWeight: 700 }}>Répartition par site</h2>
+              <p style={{ fontSize: 11 }}>Implantation géographique des machines</p>
+            </div>
             <div className="panel-heading-icon"><Building2 size={18} /></div>
           </div>
-          {loading ? <div className="loading-lines"><i /><i /><i /></div> : (
-            <div className="bar-list">
+          {loading ? (
+            <div className="loading-lines"><i /><i /><i /></div>
+          ) : (
+            <div className="pro-bar-list">
               {(stats?.par_site ?? []).slice(0, 6).map((item, index, list) => {
                 const max = Math.max(...list.map((entry) => entry.count), 1);
+                const pct = total > 0 ? Math.round((item.count / total) * 100) : 0;
                 return (
-                  <div className="bar-item" key={`${item.site}-${index}`}>
-                    <div className="bar-item-top"><span>{item.site}</span><strong>{item.count} machine{item.count > 1 ? 's' : ''}</strong></div>
-                    <div className="bar-track"><span style={{ width: `${(item.count / max) * 100}%`, background: '#3b82f6' }} /></div>
-                  </div>
+                  <Link
+                    to={`/assets?search=${encodeURIComponent(item.site)}`}
+                    className="pro-dashboard-row"
+                    key={`${item.site}-${index}`}
+                    title={`Filtrer par site : ${item.site}`}
+                  >
+                    <div className="pro-row-top">
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <div className="pro-icon-box sky">
+                          <MapPin size={14} />
+                        </div>
+                        <span style={{ fontWeight: 600, fontSize: 12, color: '#1e293b' }}>
+                          {item.site}
+                        </span>
+                      </div>
+                      <div className="pro-metric-badge">
+                        <strong>{item.count} machine{item.count > 1 ? 's' : ''}</strong>
+                        <span style={{ color: '#94a3b8', fontSize: 10, marginLeft: 4 }}>({pct}%)</span>
+                      </div>
+                    </div>
+                    <div className="pro-bar-track">
+                      <span
+                        style={{
+                          width: `${(item.count / max) * 100}%`,
+                          background: 'linear-gradient(90deg, #0284c7 0%, #38bdf8 100%)',
+                        }}
+                      />
+                    </div>
+                  </Link>
                 );
               })}
               {!stats?.par_site?.length && <EmptyState text="Aucune donnée de site disponible." />}
             </div>
           )}
         </section>
-        <section className="panel">
+
+        <section className="panel pro-card">
           <div className="panel-heading">
-            <div><h2>Répartition par département</h2><p>Direction et services utilisateurs</p></div>
+            <div>
+              <h2 style={{ fontSize: 14, fontWeight: 700 }}>Répartition par département</h2>
+              <p style={{ fontSize: 11 }}>Directions et services utilisateurs</p>
+            </div>
             <div className="panel-heading-icon green"><PieChart size={18} /></div>
           </div>
-          {loading ? <div className="loading-lines"><i /><i /><i /></div> : (
-            <div className="bar-list">
+          {loading ? (
+            <div className="loading-lines"><i /><i /><i /></div>
+          ) : (
+            <div className="pro-bar-list">
               {(stats?.par_departement ?? []).slice(0, 6).map((item, index, list) => {
                 const max = Math.max(...list.map((entry) => entry.count), 1);
+                const pct = total > 0 ? Math.round((item.count / total) * 100) : 0;
                 return (
-                  <div className="bar-item" key={`${item.departement}-${index}`}>
-                    <div className="bar-item-top"><span>{item.departement}</span><strong>{item.count} machine{item.count > 1 ? 's' : ''}</strong></div>
-                    <div className="bar-track"><span className="green-fill" style={{ width: `${(item.count / max) * 100}%` }} /></div>
-                  </div>
+                  <Link
+                    to={`/assets?search=${encodeURIComponent(item.departement)}`}
+                    className="pro-dashboard-row"
+                    key={`${item.departement}-${index}`}
+                    title={`Filtrer par département : ${item.departement}`}
+                  >
+                    <div className="pro-row-top">
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <div className="pro-icon-box emerald">
+                          <BriefcaseBusiness size={14} />
+                        </div>
+                        <span style={{ fontWeight: 600, fontSize: 12, color: '#1e293b' }}>
+                          {item.departement}
+                        </span>
+                      </div>
+                      <div className="pro-metric-badge">
+                        <strong>{item.count} machine{item.count > 1 ? 's' : ''}</strong>
+                        <span style={{ color: '#94a3b8', fontSize: 10, marginLeft: 4 }}>({pct}%)</span>
+                      </div>
+                    </div>
+                    <div className="pro-bar-track">
+                      <span
+                        style={{
+                          width: `${(item.count / max) * 100}%`,
+                          background: 'linear-gradient(90deg, #059669 0%, #10b981 100%)',
+                        }}
+                      />
+                    </div>
+                  </Link>
                 );
               })}
               {!stats?.par_departement?.length && <EmptyState text="Aucune donnée de département disponible." />}
@@ -784,9 +923,9 @@ function DashboardPage() {
         </section>
       </div>
 
-      <section className="panel recent-panel">
+      <section className="panel recent-panel pro-card">
         <div className="panel-heading">
-          <div><h2>Équipements récemment ajoutés</h2><p>Dernières entrées de l’inventaire</p></div>
+          <div><h2 style={{ fontSize: 14, fontWeight: 700 }}>Équipements récemment ajoutés</h2><p style={{ fontSize: 11 }}>Dernières entrées de l’inventaire</p></div>
           <Link className="text-link" to="/assets">Voir l’inventaire <span>→</span></Link>
         </div>
         {loading ? <div className="loading-lines"><i /><i /><i /></div> : (
@@ -812,12 +951,49 @@ function DashboardPage() {
   );
 }
 
-function ComplianceRow({ label, value = 0, total = 0 }: { label: string; value?: number; total?: number }) {
+function ComplianceRow({
+  label,
+  value = 0,
+  total = 0,
+  icon: Icon = Shield,
+}: {
+  label: string;
+  value?: number;
+  total?: number;
+  icon?: LucideIcon;
+}) {
   const percent = total ? Math.min(100, Math.round((value / total) * 100)) : 0;
+  const gradient =
+    percent >= 80
+      ? 'linear-gradient(90deg, #10b981 0%, #059669 100%)'
+      : percent >= 50
+      ? 'linear-gradient(90deg, #f59e0b 0%, #d97706 100%)'
+      : 'linear-gradient(90deg, #ef4444 0%, #b91c1c 100%)';
+
+  const badgeClass =
+    percent >= 80 ? 'status-green' : percent >= 50 ? 'status-amber' : 'status-red';
+
   return (
-    <div className="compliance-row">
-      <div><span>{label}</span><strong>{percent}%</strong></div>
-      <div className="bar-track"><span className="green-fill" style={{ width: `${percent}%` }} /></div>
+    <div className="pro-dashboard-row" style={{ padding: '6px 8px' }}>
+      <div className="pro-row-top">
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <div className="pro-icon-box green">
+            <Icon size={14} />
+          </div>
+          <span style={{ fontWeight: 600, fontSize: 12, color: '#1e293b' }}>{label}</span>
+        </div>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 10, color: '#64748b' }}>
+            {value}/{total} postes
+          </span>
+          <span className={`status-badge ${badgeClass}`} style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px' }}>
+            {percent}%
+          </span>
+        </div>
+      </div>
+      <div className="pro-bar-track">
+        <span style={{ width: `${percent}%`, background: gradient }} />
+      </div>
     </div>
   );
 }
