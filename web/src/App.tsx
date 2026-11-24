@@ -630,6 +630,26 @@ function formatAssetType(type: string): { label: string; icon: LucideIcon } {
   return { label: type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' '), icon: HardDrive };
 }
 
+function formatAssetStatus(statut: string): { label: string; icon: LucideIcon; boxTone: string; gradient: string } {
+  const s = (statut || '').toLowerCase().trim();
+  if (s.includes('service') || s === 'actif') {
+    return { label: 'En service (Opérationnel)', icon: Activity, boxTone: 'green', gradient: 'linear-gradient(90deg, #10b981 0%, #059669 100%)' };
+  }
+  if (s.includes('stock')) {
+    return { label: 'En stock (Disponible)', icon: Package, boxTone: 'blue', gradient: 'linear-gradient(90deg, #3b82f6 0%, #2563eb 100%)' };
+  }
+  if (s.includes('maintenance')) {
+    return { label: 'En maintenance (Révision/SAV)', icon: Settings, boxTone: 'amber', gradient: 'linear-gradient(90deg, #f59e0b 0%, #d97706 100%)' };
+  }
+  if (s.includes('hors') || s.includes('panne')) {
+    return { label: 'Hors service (Défaillant)', icon: CircleAlert, boxTone: 'red', gradient: 'linear-gradient(90deg, #ef4444 0%, #b91c1c 100%)' };
+  }
+  if (s.includes('reforme') || s.includes('réforme') || s.includes('rebut')) {
+    return { label: 'Réformé / Mis au rebut', icon: Archive, boxTone: 'gray', gradient: 'linear-gradient(90deg, #94a3b8 0%, #64748b 100%)' };
+  }
+  return { label: statut ? statut.replace(/_/g, ' ') : 'Inconnu', icon: Activity, boxTone: 'gray', gradient: 'linear-gradient(90deg, #64748b, #475569)' };
+}
+
 function DashboardPage() {
   const { token } = useAuth();
   const [stats, setStats] = useState<DashboardData | null>(null);
@@ -2356,31 +2376,45 @@ function ReportsPage() {
         </div>
         <div className="dashboard-columns">
           {/* Équipements par Statut */}
-          <section className="panel">
+          <section className="panel pro-card">
             <div className="panel-heading">
               <div>
-                <h2>État de Santé du Parc (Statuts)</h2>
-                <p>Répartition par condition opérationnelle</p>
+                <h2 style={{ fontSize: 14, fontWeight: 700 }}>État de Santé du Parc (Statuts)</h2>
+                <p style={{ fontSize: 11 }}>Répartition par condition opérationnelle</p>
               </div>
               <div className="panel-heading-icon green"><Activity size={18} /></div>
             </div>
-            <div className="bar-list" style={{ marginTop: 18 }}>
+            <div className="pro-bar-list">
               {statutData.map((item, idx) => {
                 const count = Number(item.count || 0);
                 const pct = Math.round((count / maxStatut) * 100);
-                const st = String(item.statut || 'inconnu');
+                const info = formatAssetStatus(String(item.statut || ''));
+                const Icon = info.icon;
                 return (
-                  <div className="bar-item" key={idx}>
-                    <div className="bar-item-top">
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <span className={`status-badge ${statusTone(st)}`}>{st}</span>
-                      </span>
-                      <strong>{count} machine{count > 1 ? 's' : ''}</strong>
+                  <Link
+                    to={`/assets?statut=${encodeURIComponent(String(item.statut || ''))}`}
+                    className="pro-dashboard-row"
+                    key={idx}
+                    title={`Voir les équipements : ${info.label}`}
+                  >
+                    <div className="pro-row-top">
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <div className={`pro-icon-box ${info.boxTone}`}>
+                          <Icon size={14} />
+                        </div>
+                        <span style={{ fontWeight: 600, fontSize: 12, color: '#1e293b' }}>
+                          {info.label}
+                        </span>
+                      </div>
+                      <div className="pro-metric-badge">
+                        <strong>{count} machine{count > 1 ? 's' : ''}</strong>
+                        <span style={{ color: '#94a3b8', fontSize: 10, marginLeft: 4 }}>({pct}%)</span>
+                      </div>
                     </div>
-                    <div className="bar-track">
-                      <span style={{ width: `${pct}%`, background: st.includes('service') ? '#10b981' : st.includes('hors') ? '#ef4444' : '#f59e0b' }} />
+                    <div className="pro-bar-track">
+                      <span style={{ width: `${pct}%`, background: info.gradient }} />
                     </div>
-                  </div>
+                  </Link>
                 );
               })}
               {!statutData.length && <EmptyState text="Aucune donnée de statut." />}
@@ -2388,28 +2422,45 @@ function ReportsPage() {
           </section>
 
           {/* Types d'équipements */}
-          <section className="panel">
+          <section className="panel pro-card">
             <div className="panel-heading">
               <div>
-                <h2>Parc par Type de Matériel</h2>
-                <p>Volume par catégorie de poste</p>
+                <h2 style={{ fontSize: 14, fontWeight: 700 }}>Parc par Type de Matériel</h2>
+                <p style={{ fontSize: 11 }}>Volume par catégorie de poste</p>
               </div>
               <div className="panel-heading-icon"><Laptop size={18} /></div>
             </div>
-            <div className="bar-list" style={{ marginTop: 18 }}>
+            <div className="pro-bar-list">
               {typeData.map((item, idx) => {
                 const count = Number(item.count || 0);
                 const pct = Math.round((count / maxType) * 100);
+                const info = formatAssetType(String(item.type || ''));
+                const Icon = info.icon;
                 return (
-                  <div className="bar-item" key={idx}>
-                    <div className="bar-item-top">
-                      <span style={{ textTransform: 'capitalize' }}>{String(item.type)}</span>
-                      <strong>{count} unité{count > 1 ? 's' : ''}</strong>
+                  <Link
+                    to={`/assets?search=${encodeURIComponent(String(item.type || ''))}`}
+                    className="pro-dashboard-row"
+                    key={idx}
+                    title={`Voir les ${info.label}`}
+                  >
+                    <div className="pro-row-top">
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <div className="pro-icon-box blue">
+                          <Icon size={14} />
+                        </div>
+                        <span style={{ fontWeight: 600, fontSize: 12, color: '#1e293b' }}>
+                          {info.label}
+                        </span>
+                      </div>
+                      <div className="pro-metric-badge">
+                        <strong>{count} unité{count > 1 ? 's' : ''}</strong>
+                        <span style={{ color: '#94a3b8', fontSize: 10, marginLeft: 4 }}>({pct}%)</span>
+                      </div>
                     </div>
-                    <div className="bar-track">
-                      <span style={{ width: `${pct}%`, background: '#3b82f6' }} />
+                    <div className="pro-bar-track">
+                      <span style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #3b82f6 0%, #6366f1 100%)' }} />
                     </div>
-                  </div>
+                  </Link>
                 );
               })}
               {!typeData.length && <EmptyState text="Aucun équipement recensé." />}
@@ -2417,11 +2468,11 @@ function ReportsPage() {
           </section>
 
           {/* Utilisation des Licences */}
-          <section className="panel" style={{ gridColumn: '1 / -1' }}>
+          <section className="panel pro-card" style={{ gridColumn: '1 / -1' }}>
             <div className="panel-heading">
               <div>
-                <h2>Taux d'Utilisation des Licences Logicielles</h2>
-                <p>Attributions actuelles par rapport aux quotas achetés</p>
+                <h2 style={{ fontSize: 14, fontWeight: 700 }}>Taux d'Utilisation des Licences Logicielles</h2>
+                <p style={{ fontSize: 11 }}>Attributions actuelles par rapport aux quotas achetés</p>
               </div>
               <div className="panel-heading-icon green"><ShieldCheck size={18} /></div>
             </div>
@@ -2441,18 +2492,31 @@ function ReportsPage() {
                     const quota = Number(lic.quota_max || 0);
                     const alloc = Number(lic.allocated || 0);
                     const pct = quota > 0 ? Math.min(100, Math.round((alloc / quota) * 100)) : 0;
+                    const grad =
+                      pct > 90
+                        ? 'linear-gradient(90deg, #ef4444, #dc2626)'
+                        : pct > 75
+                        ? 'linear-gradient(90deg, #f59e0b, #d97706)'
+                        : 'linear-gradient(90deg, #10b981, #059669)';
                     return (
                       <tr key={idx}>
-                        <td><strong>{String(lic.nom)}</strong></td>
-                        <td>{String(lic.editeur || '—')}</td>
-                        <td>{alloc}</td>
-                        <td>{quota || 'Illimité'}</td>
-                        <td style={{ minWidth: 140 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <div className="bar-track" style={{ flex: 1 }}>
-                              <span style={{ width: `${pct}%`, background: pct > 90 ? '#ef4444' : pct > 75 ? '#f59e0b' : '#10b981' }} />
+                        <td>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                            <div className="pro-icon-box purple" style={{ width: 24, height: 24 }}>
+                              <ShieldCheck size={13} />
                             </div>
-                            <span style={{ fontSize: 10, fontWeight: 700 }}>{pct}%</span>
+                            <strong>{String(lic.nom)}</strong>
+                          </div>
+                        </td>
+                        <td>{String(lic.editeur || '—')}</td>
+                        <td><span style={{ fontWeight: 700 }}>{alloc}</span> poste{alloc > 1 ? 's' : ''}</td>
+                        <td>{quota || 'Illimité'}</td>
+                        <td style={{ minWidth: 160 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div className="pro-bar-track" style={{ flex: 1 }}>
+                              <span style={{ width: `${pct}%`, background: grad }} />
+                            </div>
+                            <span style={{ fontSize: 11, fontWeight: 700, minWidth: 35 }}>{pct}%</span>
                           </div>
                         </td>
                       </tr>
@@ -2465,11 +2529,11 @@ function ReportsPage() {
           </section>
 
           {/* Alertes Consommables */}
-          <section className="panel" style={{ gridColumn: '1 / -1' }}>
+          <section className="panel pro-card" style={{ gridColumn: '1 / -1' }}>
             <div className="panel-heading">
               <div>
-                <h2>Niveaux de Stocks Consommables</h2>
-                <p>Surveillance des consommables par rapport au seuil critique</p>
+                <h2 style={{ fontSize: 14, fontWeight: 700 }}>Niveaux de Stocks Consommables</h2>
+                <p style={{ fontSize: 11 }}>Surveillance des consommables par rapport au seuil critique</p>
               </div>
               <div className="panel-heading-icon"><Package size={18} /></div>
             </div>
@@ -2490,11 +2554,18 @@ function ReportsPage() {
                     const isLow = qte <= seuil;
                     return (
                       <tr key={idx}>
-                        <td><strong>{String(item.nom)}</strong></td>
-                        <td><span style={{ fontSize: 13, fontWeight: 700 }}>{qte}</span></td>
-                        <td>{seuil}</td>
                         <td>
-                          <span className={`status-badge ${isLow ? 'status-red' : 'status-green'}`}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                            <div className={`pro-icon-box ${isLow ? 'red' : 'green'}`} style={{ width: 24, height: 24 }}>
+                              <Package size={13} />
+                            </div>
+                            <strong>{String(item.nom)}</strong>
+                          </div>
+                        </td>
+                        <td><span style={{ fontSize: 13, fontWeight: 700, color: isLow ? '#dc2626' : '#0f172a' }}>{qte} unité{qte > 1 ? 's' : ''}</span></td>
+                        <td>{seuil} unité{seuil > 1 ? 's' : ''}</td>
+                        <td>
+                          <span className={`status-badge ${isLow ? 'status-red' : 'status-green'}`} style={{ fontSize: 10, padding: '3px 8px' }}>
                             {isLow ? '⚠️ Stock critique' : '✅ Stock suffisant'}
                           </span>
                         </td>
