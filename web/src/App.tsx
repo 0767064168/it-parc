@@ -476,7 +476,7 @@ function LoginPage() {
 }
 
 function AppLayout() {
-  const { user, logout } = useAuth();
+  const { token, user, logout } = useAuth();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
@@ -494,6 +494,20 @@ function AppLayout() {
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('parc-it-theme') === 'dark';
   });
+
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [alertsSummary, setAlertsSummary] = useState<DashboardData | null>(null);
+
+  useEffect(() => {
+    apiRequest<DashboardData>('/dashboard/stats', { token })
+      .then((data) => setAlertsSummary(data))
+      .catch(() => {});
+  }, [token, location.pathname]);
+
+  const alertCount =
+    (alertsSummary?.stock_critique || 0) +
+    (alertsSummary?.licences_expirant_bientot || 0) +
+    (alertsSummary?.tickets_urgents || 0);
 
   useEffect(() => {
     if (darkMode) {
@@ -586,7 +600,81 @@ function AppLayout() {
             <Link to="/search" className="icon-button" title="Recherche rapide" aria-label="Recherche">
               <Search size={18} />
             </Link>
-            <div className="icon-button notification-button" aria-hidden="true"><Bell size={19} /></div>
+            <div className="notification-wrapper">
+              <button
+                type="button"
+                className="icon-button notification-button"
+                onClick={() => setShowNotifications(!showNotifications)}
+                title="Notifications & alertes"
+                aria-label="Centre de notifications"
+                style={{ position: 'relative' }}
+              >
+                <Bell size={18} />
+                {alertCount > 0 && <span className="notification-badge-dot">{alertCount}</span>}
+              </button>
+              {showNotifications && (
+                <div className="notification-popover" onClick={(e) => e.stopPropagation()}>
+                  <div className="notification-popover-header">
+                    <span>Alertes Opérationnelles</span>
+                    <span style={{ fontSize: 10, background: alertCount > 0 ? '#fee2e2' : '#f0fdf4', color: alertCount > 0 ? '#991b1b' : '#16a34a', padding: '2px 7px', borderRadius: 10 }}>
+                      {alertCount} active{alertCount > 1 ? 's' : ''}
+                    </span>
+                  </div>
+                  <div className="notification-popover-list">
+                    {Boolean(alertsSummary?.stock_critique && alertsSummary.stock_critique > 0) && (
+                      <Link
+                        to="/consommables"
+                        className="notification-popover-item"
+                        onClick={() => setShowNotifications(false)}
+                      >
+                        <div className="pro-icon-box red" style={{ width: 26, height: 26 }}>
+                          <Package size={13} />
+                        </div>
+                        <div>
+                          <strong style={{ fontSize: 11, display: 'block' }}>{alertsSummary?.stock_critique} consommable(s) sous le seuil</strong>
+                          <span style={{ fontSize: 10, color: '#64748b' }}>Stock critique à réapprovisionner</span>
+                        </div>
+                      </Link>
+                    )}
+                    {Boolean(alertsSummary?.licences_expirant_bientot && alertsSummary.licences_expirant_bientot > 0) && (
+                      <Link
+                        to="/licences"
+                        className="notification-popover-item"
+                        onClick={() => setShowNotifications(false)}
+                      >
+                        <div className="pro-icon-box amber" style={{ width: 26, height: 26 }}>
+                          <ShieldCheck size={13} />
+                        </div>
+                        <div>
+                          <strong style={{ fontSize: 11, display: 'block' }}>{alertsSummary?.licences_expirant_bientot} licence(s) à renouveler</strong>
+                          <span style={{ fontSize: 10, color: '#64748b' }}>Expiration sous 90 jours</span>
+                        </div>
+                      </Link>
+                    )}
+                    {Boolean(alertsSummary?.tickets_urgents && alertsSummary.tickets_urgents > 0) && (
+                      <Link
+                        to="/tickets"
+                        className="notification-popover-item"
+                        onClick={() => setShowNotifications(false)}
+                      >
+                        <div className="pro-icon-box red" style={{ width: 26, height: 26 }}>
+                          <Ticket size={13} />
+                        </div>
+                        <div>
+                          <strong style={{ fontSize: 11, display: 'block' }}>{alertsSummary?.tickets_urgents} ticket(s) urgent(s)</strong>
+                          <span style={{ fontSize: 10, color: '#64748b' }}>Pannes ou incidents critiques</span>
+                        </div>
+                      </Link>
+                    )}
+                    {alertCount === 0 && (
+                      <div style={{ padding: '16px 12px', textAlign: 'center', color: '#64748b', fontSize: 11 }}>
+                        ✅ Aucune alerte active. Tous les voyants du parc sont au vert.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             <Link to="/profile" className="topbar-user" title="Voir mon profil">
               <div className="avatar avatar-small">{initials(displayName, user?.username)}</div>
               <ChevronDown size={15} />
@@ -1473,12 +1561,28 @@ function ModulePage({ path }: { path: string }) {
               <div className="detail-grid">
                 {Object.entries(selectedRow)
                   .filter(([k, v]) => typeof v !== 'object' && v !== null && k !== 'deleted_at')
-                  .map(([key, val]) => (
-                    <div className="detail-item" key={key}>
-                      <span>{key.replace(/_/g, ' ')}</span>
-                      <strong>{String(val)}</strong>
-                    </div>
-                  ))}
+                  .map(([key, val]) => {
+                    let formattedVal: React.ReactNode = String(val);
+                    if (key === 'statut' || key.endsWith('.statut')) {
+                      const sInfo = formatAssetStatus(String(val));
+                      formattedVal = <span className={`status-badge ${sInfo.boxTone ? `status-${sInfo.boxTone}` : 'status-gray'}`}>{sInfo.label}</span>;
+                    } else if (key === 'type' || key.endsWith('.type')) {
+                      const tInfo = formatAssetType(String(val));
+                      formattedVal = tInfo.label;
+                    } else if (key === 'priorite' || key.endsWith('.priorite')) {
+                      formattedVal = <span className={`status-badge ${priorityBadge(String(val))}`}>{String(val)}</span>;
+                    } else if (key.includes('date') && String(val).includes('-')) {
+                      try {
+                        formattedVal = new Date(String(val)).toLocaleDateString('fr-FR');
+                      } catch (_) {}
+                    }
+                    return (
+                      <div className="detail-item" key={key}>
+                        <span style={{ textTransform: 'capitalize' }}>{key.replace(/_/g, ' ')}</span>
+                        <strong>{formattedVal}</strong>
+                      </div>
+                    );
+                  })}
               </div>
             )}
             <div className="dialog-actions" style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
@@ -1885,9 +1989,28 @@ function ModulePage({ path }: { path: string }) {
                       const text = cellText(value);
                       let content: React.ReactNode = text;
                       if (column.key === 'statut' || column.key.endsWith('.statut')) {
-                        content = <span className={`status-badge ${statusTone(text)}`}>{text}</span>;
+                        const sInfo = formatAssetStatus(text);
+                        content = <span className={`status-badge ${statusTone(text)}`}>{sInfo.label.split(' (')[0]}</span>;
+                      } else if (column.key === 'type' || column.key.endsWith('.type')) {
+                        const tInfo = formatAssetType(text);
+                        const TypeIcon = tInfo.icon;
+                        content = (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <TypeIcon size={13} style={{ color: '#2563eb', flexShrink: 0 }} />
+                            <span>{tInfo.label}</span>
+                          </span>
+                        );
                       } else if (column.key === 'priorite' || column.key.endsWith('.priorite')) {
                         content = <span className={`status-badge ${priorityBadge(text)}`}>{text}</span>;
+                      } else if (column.key === 'asset_tag' || column.key === 'Nom Machine' || column.key === 'nom_machine') {
+                        content = (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                            <div className="pro-icon-box blue" style={{ width: 24, height: 24 }}>
+                              <Laptop size={12} />
+                            </div>
+                            <strong style={{ color: '#0f172a', fontSize: 12 }}>{text}</strong>
+                          </div>
+                        );
                       }
                       return <td key={column.key}>{content}</td>;
                     })}
