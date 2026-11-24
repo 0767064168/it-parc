@@ -53,11 +53,16 @@ import {
   MapPin,
   Lock,
   Shield,
+  ScanLine,
+  PenTool,
+  Coins,
+  ClipboardCheck,
   type LucideIcon,
 } from 'lucide-react';
-import { Link, Navigate, NavLink, Route, Routes, useLocation, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiDownload, apiRequest } from './api';
 import { useAuth } from './auth';
+import { QrScannerModal, BatchQrLabelsModal, SignaturePadModal, AuditsPage } from './AuditAndTools';
 
 type DashboardData = {
   totaux?: Record<string, number>;
@@ -356,6 +361,7 @@ const navigation: NavigationItem[] = [
   { label: 'Licences', path: '/licences', icon: ShieldCheck },
   { label: 'Consommables', path: '/consommables', icon: Package },
   { label: 'Maintenances', path: '/maintenances', icon: Activity },
+  { label: 'Audits & Inventaire', path: '/audits', icon: ClipboardCheck },
   { label: 'Base de connaissances', path: '/wiki', icon: BookOpen },
   { label: 'Gestion des Accès', path: '/users', icon: Users },
   { label: 'Rapports', path: '/reports', icon: ChartNoAxesCombined },
@@ -369,6 +375,7 @@ const pageTitles: Record<string, { title: string; subtitle: string; icon: Lucide
     subtitle: module.subtitle,
     icon: navigationIcon(path),
   }])),
+  '/audits': { title: 'Audits & Inventaire', subtitle: 'Campagnes d\'inventaire physique et pointage terrain', icon: ClipboardCheck },
   '/reports': { title: 'Rapports', subtitle: 'Indicateurs et analyses', icon: ChartNoAxesCombined },
   '/search': { title: 'Recherche globale', subtitle: 'Retrouver rapidement une information', icon: Search },
   '/import-export': { title: 'Import / Export', subtitle: 'Échanger les données du parc', icon: ArrowDownToLine },
@@ -478,6 +485,8 @@ function LoginPage() {
 function AppLayout() {
   const { token, user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
+  const [showScanner, setShowScanner] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [installPrompt, setInstallPrompt] = useState<(Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> }) | null>(null);
@@ -597,6 +606,16 @@ function AppLayout() {
               {darkMode ? <Sun size={17} /> : <Moon size={17} />}
             </button>
             <span className={`environment-pill ${isOnline ? '' : 'offline'}`}><span /> {isOnline ? 'En ligne' : 'Hors ligne'}</span>
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => setShowScanner(true)}
+              title="Scanner un QR Code d'équipement (Caméra)"
+              aria-label="Scanner QR Code"
+              style={{ color: '#0284c7' }}
+            >
+              <ScanLine size={18} />
+            </button>
             <Link to="/search" className="icon-button" title="Recherche rapide" aria-label="Recherche">
               <Search size={18} />
             </Link>
@@ -681,12 +700,20 @@ function AppLayout() {
             </Link>
           </div>
         </header>
+        <QrScannerModal
+          isOpen={showScanner}
+          onClose={() => setShowScanner(false)}
+          onScan={(code) => {
+            navigate(`/search?q=${encodeURIComponent(code)}`);
+          }}
+        />
         <main className="page-content">
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             {Object.keys(modules).map((path) => (
               <Route key={path} path={path} element={<ModulePage path={path} />} />
             ))}
+            <Route path="/audits" element={<AuditsPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/import-export" element={<ImportExportPage />} />
@@ -1262,6 +1289,8 @@ function ModulePage({ path }: { path: string }) {
   const [error, setError] = useState('');
   const [downloadingPdfId, setDownloadingPdfId] = useState<number | null>(null);
   const [qrModalAsset, setQrModalAsset] = useState<{ id: number; tag: string; dataUrl: string; asset: Record<string, unknown> } | null>(null);
+  const [showBatchLabels, setShowBatchLabels] = useState(false);
+  const [signingAff, setSigningAff] = useState<{ id: number; tag: string; user: string } | null>(null);
 
   // États pour la restitution 1-clic
   const [restitutionItem, setRestitutionItem] = useState<Record<string, unknown> | null>(null);
@@ -1380,6 +1409,31 @@ function ModulePage({ path }: { path: string }) {
       a.remove();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Erreur lors du téléchargement de la fiche technique');
+    } finally {
+      setDownloadingPdfId(null);
+    }
+  }
+
+  async function handleSignedPdf(signatureDataUrl: string) {
+    if (!signingAff) return;
+    try {
+      setDownloadingPdfId(signingAff.id);
+      const blob = await apiDownload(`/affectations/${signingAff.id}/pdf`, {
+        token,
+        method: 'POST',
+        body: { signature: signatureDataUrl },
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Fiche_Affectation_Signee_${signingAff.tag || signingAff.id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+      setSuccessMessage('PV émargé avec succès et téléchargé en PDF.');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur lors de la génération du PDF signé');
     } finally {
       setDownloadingPdfId(null);
     }
@@ -1739,6 +1793,18 @@ function ModulePage({ path }: { path: string }) {
           </div>
         </div>
       )}
+      <BatchQrLabelsModal
+        isOpen={showBatchLabels}
+        onClose={() => setShowBatchLabels(false)}
+        assets={rows}
+      />
+      <SignaturePadModal
+        isOpen={Boolean(signingAff)}
+        onClose={() => setSigningAff(null)}
+        title="Émargement & Décharge de Matériel IT"
+        beneficiaire={signingAff?.user || ''}
+        onSave={handleSignedPdf}
+      />
       {restitutionItem && (
         <div className="dialog-backdrop" onClick={() => setRestitutionItem(null)}>
           <div className="create-dialog" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
@@ -1839,6 +1905,17 @@ function ModulePage({ path }: { path: string }) {
         <div><span className="eyebrow">GESTION DU PARC</span><h1>{details.title}</h1><p>{details.subtitle}</p></div>
         <div className="heading-actions">
           {canCreate && <button className="button button-primary" onClick={() => setCreateOpen(true)}><Plus size={15} /> Ajouter</button>}
+          {path === '/assets' && (
+            <button
+              type="button"
+              className="button button-secondary"
+              onClick={() => setShowBatchLabels(true)}
+              title="Générer une planche d'étiquettes QR Code A4 imprimable"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <Printer size={15} /> Planche d'étiquettes A4
+            </button>
+          )}
           <button
             type="button"
             className="button button-secondary"
@@ -2045,6 +2122,21 @@ function ModulePage({ path }: { path: string }) {
                             >
                               <Download size={12} />
                               <span>PV Retour</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="button button-secondary"
+                              style={{ padding: '2px 8px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4, height: 26, color: '#0284c7', borderColor: '#bae6fd' }}
+                              title="Signer numériquement sur écran tactile et générer la décharge certifiée"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const userName = String(row.utilisateur_nom ?? `${row.prenom ?? ''} ${row.nom ?? ''}`.trim() ?? 'Collaborateur');
+                                const tag = String(row.asset_tag ?? row.asset_id ?? '');
+                                setSigningAff({ id: Number(row.id), tag, user: userName });
+                              }}
+                            >
+                              <PenTool size={12} />
+                              <span>Signer</span>
                             </button>
                             {Boolean(row.actif === 1 || row.actif === true || (!row.date_retrait && row.actif !== 0)) && (
                               <button
@@ -2312,7 +2404,9 @@ function CreateItemDialog({
 
 function SearchPage() {
   const { token } = useAuth();
-  const [query, setQuery] = useState('');
+  const [searchParams] = useSearchParams();
+  const initialQ = searchParams.get('q') || '';
+  const [query, setQuery] = useState(initialQ);
   const [results, setResults] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -2323,6 +2417,19 @@ function SearchPage() {
     ['licences', 'Licences', '/licences', ShieldCheck],
     ['wiki', 'Base de connaissances', '/wiki', BookOpen],
   ] as const;
+
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q && q.trim().length >= 2) {
+      setQuery(q);
+      setLoading(true);
+      setError('');
+      apiRequest<unknown>('/search', { token, query: { q: q.trim() } })
+        .then((res) => setResults(asRecord(res)))
+        .catch((reason) => setError(reason instanceof Error ? reason.message : 'La recherche a échoué.'))
+        .finally(() => setLoading(false));
+    }
+  }, [searchParams, token]);
 
   async function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2428,6 +2535,7 @@ function SearchPage() {
 function ReportsPage() {
   const { token } = useAuth();
   const [report, setReport] = useState<Record<string, unknown> | null>(null);
+  const [amortissement, setAmortissement] = useState<any>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -2437,8 +2545,39 @@ function ReportsPage() {
       .then((result) => { if (active) setReport(result); })
       .catch((reason: unknown) => { if (active) setError(reason instanceof Error ? reason.message : 'Impossible de charger les rapports.'); })
       .finally(() => { if (active) setLoading(false); });
+
+    apiRequest<any>('/dashboard/amortissement', { token })
+      .then((data) => { if (active) setAmortissement(data); })
+      .catch(() => {});
+
     return () => { active = false; };
   }, [token]);
+
+  function handleExportAmortissementCsv() {
+    if (!amortissement?.items) return;
+    const headers = ['Tag Machine', 'Marque', 'Modèle', 'Type', 'Site', 'Date Acquisition', 'Âge (Années)', 'Prix Achat (XOF)', 'VNC Actuelle (XOF)', 'Taux Amorti', 'Statut Fin de Vie'];
+    const rows = amortissement.items.map((item: any) => [
+      item.asset_tag,
+      item.marque,
+      item.modele,
+      item.type,
+      item.site,
+      item.date_acquisition,
+      item.age_annees,
+      item.prix_achat,
+      item.vnc,
+      `${item.taux_amorti_pct}%`,
+      item.est_amorti ? '100% AMORTI (À RENOUVELER)' : 'EN COURS D\'AMORTISSEMENT'
+    ]);
+    const csv = '\uFEFF' + [headers.join(';'), ...rows.map((r: any[]) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';'))].join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Amortissement_Parc_IT_${new Date().getFullYear()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   const typeData = extractRows(report?.assets_by_type);
   const statutData = extractRows(report?.assets_by_statut);
@@ -2751,6 +2890,114 @@ function ReportsPage() {
               <div style={{ padding: '24px 0', textAlign: 'center', color: '#94a3b8', fontSize: 11, fontStyle: 'italic' }}>
                 Aucune intervention de maintenance clôturée avec coût sur la période.
               </div>
+            )}
+          </section>
+
+          {/* Pilotage Financier, Amortissement & Budget N+1 */}
+          <section className="panel pro-card" style={{ gridColumn: '1 / -1' }}>
+            <div className="panel-heading">
+              <div>
+                <h2 style={{ fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Coins size={18} color="#059669" /> Pilotage Financier, Amortissement & Budget N+1
+                </h2>
+                <p style={{ fontSize: 11 }}>Calcul de dépréciation linéaire (36 mois) et projection budgétaire de renouvellement</p>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={handleExportAmortissementCsv}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+                >
+                  <FileSpreadsheet size={14} /> Grand Livre Amortissement (CSV)
+                </button>
+              </div>
+            </div>
+
+            {amortissement && (
+              <>
+                <div className="finance-kpi-grid" style={{ marginTop: 16 }}>
+                  <div className="finance-card">
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Valeur d'Acquisition Initiale</span>
+                    <div className="finance-amount" style={{ color: '#0284c7' }}>
+                      {Number(amortissement.total_acquisition || 0).toLocaleString('fr-FR')} XOF
+                    </div>
+                    <span style={{ fontSize: 11, color: '#64748b' }}>Investissement matériel total</span>
+                  </div>
+
+                  <div className="finance-card">
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Valeur Nette Comptable (VNC)</span>
+                    <div className="finance-amount" style={{ color: '#16a34a' }}>
+                      {Number(amortissement.total_vnc || 0).toLocaleString('fr-FR')} XOF
+                    </div>
+                    <span style={{ fontSize: 11, color: '#64748b' }}>Actifs non encore dépréciés</span>
+                  </div>
+
+                  <div className="finance-card">
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Matériels 100% Amortis</span>
+                    <div className="finance-amount" style={{ color: '#d97706' }}>
+                      {amortissement.nb_machines_amorties} / {amortissement.nb_machines_total}
+                    </div>
+                    <span style={{ fontSize: 11, color: '#64748b' }}>Âge moyen : {amortissement.age_moyen_annees} ans</span>
+                  </div>
+
+                  <div className="finance-card">
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Budget Prévisionnel N+1</span>
+                    <div className="finance-amount" style={{ color: '#dc2626' }}>
+                      {Number(amortissement.budget_previsionnel_n1 || 0).toLocaleString('fr-FR')} XOF
+                    </div>
+                    <span style={{ fontSize: 11, color: '#64748b' }}>Coût de remplacement du parc amorti</span>
+                  </div>
+                </div>
+
+                {/* Pyramide des âges et progression globale */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginTop: 12 }}>
+                  <div style={{ background: '#f8fafc', padding: 16, borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                    <h3 style={{ fontSize: 12, fontWeight: 700, margin: 0, color: '#334155' }}>Taux Global d'Amortissement du Parc</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '12px 0 6px' }}>
+                      <div className="pro-bar-track" style={{ flex: 1, height: 14 }}>
+                        <span style={{ width: `${amortissement.taux_global_amorti_pct}%`, background: 'linear-gradient(90deg, #3b82f6, #f59e0b, #ef4444)' }} />
+                      </div>
+                      <span style={{ fontSize: 15, fontWeight: 800 }}>{amortissement.taux_global_amorti_pct}%</span>
+                    </div>
+                    <span style={{ fontSize: 11, color: '#64748b' }}>Pourcentage de la valeur d'actif déjà amortie</span>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', padding: 16, borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                    <h3 style={{ fontSize: 12, fontWeight: 700, margin: 0, color: '#334155' }}>Répartition par Tranche d'Âge</h3>
+                    <div className="finance-age-pyramid">
+                      <div className="finance-pyramid-row">
+                        <span className="finance-pyramid-label">&lt; 1 an (Neuf) :</span>
+                        <div className="finance-pyramid-bar-bg">
+                          <div className="finance-pyramid-bar-fill" style={{ width: `${(amortissement.distribution_age.moins_1_an / (amortissement.nb_machines_total || 1)) * 100}%`, background: '#22c55e' }} />
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 700 }}>{amortissement.distribution_age.moins_1_an}</span>
+                      </div>
+                      <div className="finance-pyramid-row">
+                        <span className="finance-pyramid-label">1 à 2 ans :</span>
+                        <div className="finance-pyramid-bar-bg">
+                          <div className="finance-pyramid-bar-fill" style={{ width: `${(amortissement.distribution_age.entre_1_2_ans / (amortissement.nb_machines_total || 1)) * 100}%`, background: '#3b82f6' }} />
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 700 }}>{amortissement.distribution_age.entre_1_2_ans}</span>
+                      </div>
+                      <div className="finance-pyramid-row">
+                        <span className="finance-pyramid-label">2 à 3 ans :</span>
+                        <div className="finance-pyramid-bar-bg">
+                          <div className="finance-pyramid-bar-fill" style={{ width: `${(amortissement.distribution_age.entre_2_3_ans / (amortissement.nb_machines_total || 1)) * 100}%`, background: '#f59e0b' }} />
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 700 }}>{amortissement.distribution_age.entre_2_3_ans}</span>
+                      </div>
+                      <div className="finance-pyramid-row">
+                        <span className="finance-pyramid-label">&gt; 3 ans (Amorti) :</span>
+                        <div className="finance-pyramid-bar-bg">
+                          <div className="finance-pyramid-bar-fill" style={{ width: `${(amortissement.distribution_age.plus_3_ans / (amortissement.nb_machines_total || 1)) * 100}%`, background: '#ef4444' }} />
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 700 }}>{amortissement.distribution_age.plus_3_ans}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
             )}
           </section>
         </div>

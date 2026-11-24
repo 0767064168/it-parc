@@ -192,4 +192,100 @@ async function getAdvancedReports() {
   };
 }
 
-module.exports = { getStats, getAdvancedReports };
+async function getAmortissementStats() {
+  const items = await query(`
+    SELECT 
+      a.id, a.\`Nom Machine\` as asset_tag, a.marque, a.modele, a.type, a.statut, a.site,
+      c.prix, c.date_acquisition, c.fin_garantie, c.fournisseur, c.devise
+    FROM assets a
+    LEFT JOIN couts c ON c.asset_id = a.id
+    WHERE a.deleted_at IS NULL
+    ORDER BY a.id ASC
+  `);
+
+  const now = new Date();
+  const DURATION_MONTHS = 36; // 3 ans d'amortissement linéaire standard
+
+  let totalAcquisition = 0;
+  let totalVNC = 0;
+  let amortis100Count = 0;
+  let ageTotalMois = 0;
+  let assetsWithDateCount = 0;
+
+  const ageDistribution = {
+    moins_1_an: 0,
+    entre_1_2_ans: 0,
+    entre_2_3_ans: 0,
+    plus_3_ans: 0
+  };
+
+  const formattedItems = items.map(item => {
+    let prixAchat = item.prix ? parseFloat(item.prix) : 0;
+    if (!prixAchat) {
+      if (item.type === 'laptop') prixAchat = 650000;
+      else if (item.type === 'desktop') prixAchat = 500000;
+      else if (item.type === 'ecran') prixAchat = 120000;
+      else if (item.type === 'imprimante') prixAchat = 350000;
+      else if (item.type === 'pax_terminal') prixAchat = 250000;
+      else prixAchat = 400000;
+    }
+
+    const dateAcq = item.date_acquisition ? new Date(item.date_acquisition) : new Date(now.getFullYear() - 2, 0, 1);
+    const diffMonths = Math.max(0, (now.getFullYear() - dateAcq.getFullYear()) * 12 + (now.getMonth() - dateAcq.getMonth()));
+    
+    ageTotalMois += diffMonths;
+    assetsWithDateCount++;
+
+    if (diffMonths < 12) ageDistribution.moins_1_an++;
+    else if (diffMonths < 24) ageDistribution.entre_1_2_ans++;
+    else if (diffMonths < 36) ageDistribution.entre_2_3_ans++;
+    else ageDistribution.plus_3_ans++;
+
+    const ratioAmorti = Math.min(1, diffMonths / DURATION_MONTHS);
+    const vnc = Math.max(0, Math.round(prixAchat * (1 - ratioAmorti)));
+    const estAmorti = ratioAmorti >= 1;
+
+    if (estAmorti) amortis100Count++;
+    totalAcquisition += prixAchat;
+    totalVNC += vnc;
+
+    return {
+      id: item.id,
+      asset_tag: item.asset_tag,
+      marque: item.marque,
+      modele: item.modele,
+      type: item.type,
+      statut: item.statut,
+      site: item.site,
+      fournisseur: item.fournisseur,
+      date_acquisition: dateAcq.toISOString().split('T')[0],
+      age_mois: diffMonths,
+      age_annees: (diffMonths / 12).toFixed(1),
+      prix_achat: Math.round(prixAchat),
+      vnc: vnc,
+      taux_amorti_pct: Math.round(ratioAmorti * 100),
+      est_amorti: estAmorti,
+      devise: item.devise || 'XOF'
+    };
+  });
+
+  const ageMoyenAnnees = assetsWithDateCount > 0 ? (ageTotalMois / assetsWithDateCount / 12).toFixed(1) : 0;
+  const tauxGlobalAmortiPct = totalAcquisition > 0 ? Math.round(((totalAcquisition - totalVNC) / totalAcquisition) * 100) : 0;
+  const budgetPrevisionnelN1 = formattedItems
+    .filter(i => i.est_amorti && i.statut !== 'reforme')
+    .reduce((acc, curr) => acc + curr.prix_achat, 0);
+
+  return {
+    total_acquisition: totalAcquisition,
+    total_vnc: totalVNC,
+    taux_global_amorti_pct: tauxGlobalAmortiPct,
+    nb_machines_total: items.length,
+    nb_machines_amorties: amortis100Count,
+    age_moyen_annees: parseFloat(ageMoyenAnnees),
+    budget_previsionnel_n1: budgetPrevisionnelN1,
+    distribution_age: ageDistribution,
+    items: formattedItems.slice(0, 50)
+  };
+}
+
+module.exports = { getStats, getAdvancedReports, getAmortissementStats };

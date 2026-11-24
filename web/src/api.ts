@@ -101,13 +101,23 @@ export async function apiRequest<T>(
 
 export async function apiDownload(
   path: string,
-  options: { token?: string | null; query?: Record<string, string | number | boolean | undefined> } = {},
+  options: {
+    token?: string | null;
+    method?: string;
+    body?: unknown;
+    query?: Record<string, string | number | boolean | undefined>;
+  } = {},
 ) {
   const headers = new Headers();
   if (options.token) headers.set('Authorization', `Bearer ${options.token}`);
+  if (options.body !== undefined) headers.set('Content-Type', 'application/json');
   let response: Response;
   try {
-    response = await fetch(apiUrl(path, options.query), { headers });
+    response = await fetch(apiUrl(path, options.query), {
+      method: options.method ?? 'GET',
+      headers,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    });
   } catch {
     throw new ApiError(
       'Serveur API injoignable. Vérifiez que l’API tourne sur le port 3000 et que l’origine Web est autorisée.',

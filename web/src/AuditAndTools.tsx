@@ -1,0 +1,877 @@
+import React, { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import {
+  Camera,
+  ScanLine,
+  X,
+  Printer,
+  PenTool,
+  RotateCcw,
+  CheckCircle2,
+  ClipboardCheck,
+  Plus,
+  FileSpreadsheet,
+  PackageCheck,
+} from 'lucide-react';
+import { apiRequest } from './api';
+import { useAuth } from './auth';
+
+// ============================================================================
+// 1. SCANNER QR CODE MOBILE & DESKTOP (CAMÉRA)
+// ============================================================================
+export function QrScannerModal({
+  isOpen,
+  onClose,
+  onScan,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onScan: (code: string) => void;
+}) {
+  const [manualCode, setManualCode] = useState('');
+  const [cameraError, setCameraError] = useState('');
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setCameraError('');
+    setManualCode('');
+
+    let stopped = false;
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        if (stopped) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+      } catch (err: unknown) {
+        setCameraError("Impossible d'accéder à la caméra (accès refusé ou indisponible). Vous pouvez saisir le code manuellement ci-dessous.");
+      }
+    }
+
+    void startCamera();
+
+    // BarcodeDetector natif pour Android / Chrome / Edge
+    let intervalId: any;
+    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+      try {
+        // @ts-ignore
+        const detector = new window.BarcodeDetector({ formats: ['qr_code', 'code_128', 'ean_13'] });
+        intervalId = setInterval(async () => {
+          if (videoRef.current && videoRef.current.readyState >= 2) {
+            try {
+              const barcodes = await detector.detect(videoRef.current);
+              if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                const code = barcodes[0].rawValue;
+                playBeep();
+                onScan(code);
+                onClose();
+              }
+            } catch (_) {}
+          }
+        }, 400);
+      } catch (_) {}
+    }
+
+    return () => {
+      stopped = true;
+      if (intervalId) clearInterval(intervalId);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+    };
+  }, [isOpen, onScan, onClose]);
+
+  function playBeep() {
+    try {
+      const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const audioCtx = new AudioContextClass();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.14);
+    } catch (_) {}
+  }
+
+  function handleManualSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (manualCode.trim()) {
+      playBeep();
+      onScan(manualCode.trim());
+      onClose();
+    }
+  }
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="scanner-modal-overlay" onClick={onClose}>
+      <div className="scanner-card" onClick={(e) => e.stopPropagation()}>
+        <div className="scanner-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <ScanLine size={18} color="#38bdf8" />
+            <strong style={{ fontSize: 14 }}>Scanner Caméra QR Code</strong>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} style={{ color: '#94a3b8' }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="scanner-viewport-wrapper">
+          <video ref={videoRef} className="scanner-video" playsInline muted />
+          <div className="scanner-target-box">
+            <div className="scanner-laser" />
+          </div>
+          {cameraError && (
+            <div style={{ position: 'absolute', inset: 0, background: '#020617', padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>
+              <Camera size={36} color="#ef4444" style={{ marginBottom: 12 }} />
+              <p style={{ margin: 0 }}>{cameraError}</p>
+            </div>
+          )}
+        </div>
+
+        <p className="scanner-instructions">
+          Centrez le QR Code ou le Code-barres de la machine dans le cadre ci-dessus.
+        </p>
+
+        <form className="scanner-manual-input" onSubmit={handleManualSubmit}>
+          <input
+            type="text"
+            placeholder="Ou saisissez le Tag / N° de Série..."
+            value={manualCode}
+            onChange={(e) => setManualCode(e.target.value)}
+            autoFocus
+          />
+          <button type="submit" className="button button-primary" style={{ padding: '0 16px' }}>
+            Valider
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// 2. PLANCHE D'IMPRESSION D'ÉTIQUETTES PAR LOT A4 (BATCH LABELS)
+// ============================================================================
+export function BatchQrLabelsModal({
+  isOpen,
+  onClose,
+  assets,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  assets: Array<Record<string, unknown>>;
+}) {
+  const [selectedSite, setSelectedSite] = useState('Tous');
+
+  const filteredAssets = useMemo(() => {
+    if (selectedSite === 'Tous') return assets;
+    return assets.filter((a) => String(a.site || '').toLowerCase().includes(selectedSite.toLowerCase()));
+  }, [assets, selectedSite]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="batch-labels-modal" onClick={onClose}>
+      <div className="batch-labels-container" onClick={(e) => e.stopPropagation()}>
+        <div className="batch-labels-toolbar">
+          <div>
+            <h3 style={{ margin: 0, fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Printer size={18} color="#0284c7" /> Planche d'étiquettes QR Code A4
+            </h3>
+            <span style={{ fontSize: 12, color: '#64748b' }}>
+              Format normalisé 24 étiquettes / page (3 colonnes x 8 lignes) • {filteredAssets.length} étiquette(s)
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <select
+              className="select"
+              value={selectedSite}
+              onChange={(e) => setSelectedSite(e.target.value)}
+              style={{ fontSize: 12, padding: '4px 8px' }}
+            >
+              <option value="Tous">Tous les sites</option>
+              <option value="Bouaké">Site Bouaké</option>
+              <option value="Abidjan">Site Abidjan</option>
+              <option value="Katiola">Site Katiola</option>
+            </select>
+            <button
+              type="button"
+              className="button button-primary"
+              onClick={() => window.print()}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <Printer size={15} /> Imprimer Planche
+            </button>
+            <button type="button" className="icon-button" onClick={onClose}>
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="batch-labels-grid printable-area">
+          {filteredAssets.map((asset) => {
+            const tag = String(asset.asset_tag || asset['Nom Machine'] || asset.id);
+            const marque = String(asset.marque || '');
+            const modele = String(asset.modele || '');
+            const sn = String(asset.serial_number || '');
+            const site = String(asset.site || 'Bouaké');
+            return (
+              <div key={String(asset.id)} className="asset-label-sticker">
+                <div style={{ width: 60, height: 60, flexShrink: 0, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(tag)}`}
+                    alt={tag}
+                    style={{ width: 52, height: 52 }}
+                  />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="asset-label-header">DIRECTION IT • {site.toUpperCase()}</div>
+                  <div className="asset-label-title" title={tag}>{tag}</div>
+                  <div className="asset-label-sub" title={`${marque} ${modele}`}>{marque} {modele}</div>
+                  <div className="asset-label-sn">S/N: {sn || 'N/A'}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// 3. SIGNATURE TACTILE NUMÉRIQUE (SIGNATURE PAD MODAL)
+// ============================================================================
+export function SignaturePadModal({
+  isOpen,
+  onClose,
+  title,
+  beneficiaire,
+  onSave,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  beneficiaire: string;
+  onSave: (signatureDataUrl: string) => Promise<void> | void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasDrawn, setHasDrawn] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setHasDrawn(false);
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+      }
+    }
+  }, [isOpen]);
+
+  function getPos(e: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
+    };
+  }
+
+  function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const pos = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+    setIsDrawing(true);
+    setHasDrawn(true);
+  }
+
+  function handlePointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const pos = getPos(e);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+  }
+
+  function handlePointerUp() {
+    setIsDrawing(false);
+  }
+
+  function handleClear() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      setHasDrawn(false);
+    }
+  }
+
+  async function handleSubmit() {
+    if (!hasDrawn) {
+      alert('Veuillez apposer votre signature avant de valider.');
+      return;
+    }
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL('image/png');
+    setIsSubmitting(true);
+    try {
+      await onSave(dataUrl);
+      onClose();
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Erreur lors de la validation');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="signature-modal-overlay" onClick={onClose}>
+      <div className="signature-card" onClick={(e) => e.stopPropagation()}>
+        <div className="scanner-header" style={{ background: '#fff', color: '#0f172a', borderBottom: '1px solid #e2e8f0' }}>
+          <div>
+            <strong style={{ fontSize: 15, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <PenTool size={16} color="#0284c7" /> {title}
+            </strong>
+            <span style={{ fontSize: 11, color: '#64748b' }}>Émargement pour : {beneficiaire}</span>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="signature-canvas-wrapper">
+          <canvas
+            ref={canvasRef}
+            width={460}
+            height={200}
+            className="signature-canvas"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
+          />
+          {!hasDrawn && <div className="signature-watermark">Signez au doigt ou au stylet ici</div>}
+        </div>
+
+        <div style={{ padding: '0 20px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={handleClear}
+            style={{ fontSize: 12 }}
+          >
+            <RotateCcw size={13} /> Effacer
+          </button>
+
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button type="button" className="button button-secondary" onClick={onClose} style={{ fontSize: 12 }}>
+              Annuler
+            </button>
+            <button
+              type="button"
+              className="button button-primary"
+              onClick={() => void handleSubmit()}
+              disabled={isSubmitting || !hasDrawn}
+              style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <CheckCircle2 size={14} /> {isSubmitting ? 'Génération...' : 'Valider & Télécharger PDF'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// 4. MODULE CAMPAGNE D'INVENTAIRE PHYSIQUE & AUDIT TERRAIN (/audits)
+// ============================================================================
+export function AuditsPage() {
+  const { token } = useAuth();
+  const [campagnes, setCampagnes] = useState<Array<Record<string, unknown>>>([]);
+  const [selectedCampagneId, setSelectedCampagneId] = useState<number | null>(null);
+  const [campagneData, setCampagneData] = useState<Record<string, any> | null>(null);
+  const [activeTab, setActiveTab] = useState<'tous' | 'conformes' | 'anomalies' | 'manquants'>('tous');
+  const [scanInput, setScanInput] = useState('');
+  const [showScanner, setShowScanner] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newTitre, setNewTitre] = useState('');
+  const [newSite, setNewSite] = useState('Bouaké');
+  const [newNotes, setNewNotes] = useState('');
+  const [scanFeedback, setScanFeedback] = useState<{ message: string; type: 'success' | 'warning' | 'error' } | null>(null);
+
+  useEffect(() => {
+    loadCampagnes();
+  }, [token]);
+
+  async function loadCampagnes() {
+    try {
+      const list = await apiRequest<Array<Record<string, unknown>>>('/audits', { token });
+      setCampagnes(list);
+      if (list.length > 0 && !selectedCampagneId) {
+        setSelectedCampagneId(Number(list[0].id));
+      }
+    } catch (_) {}
+  }
+
+  useEffect(() => {
+    if (selectedCampagneId) {
+      loadCampagneDetails(selectedCampagneId);
+    }
+  }, [selectedCampagneId, token]);
+
+  async function loadCampagneDetails(id: number) {
+    try {
+      const data = await apiRequest<Record<string, any>>(`/audits/${id}`, { token });
+      setCampagneData(data);
+    } catch (_) {}
+  }
+
+  async function handleCreateCampagne(e: FormEvent) {
+    e.preventDefault();
+    if (!newTitre.trim()) return;
+    try {
+      const res = await apiRequest<{ id: number }>('/audits', {
+        token,
+        method: 'POST',
+        body: { titre: newTitre, site: newSite, notes: newNotes }
+      });
+      setShowCreateModal(false);
+      setNewTitre('');
+      await loadCampagnes();
+      setSelectedCampagneId(res.id);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur création');
+    }
+  }
+
+  async function handleScanSubmit(codeToScan?: string) {
+    const code = (codeToScan || scanInput).trim();
+    if (!code || !selectedCampagneId) return;
+    try {
+      const res = await apiRequest<any>(`/audits/${selectedCampagneId}/scan`, {
+        token,
+        method: 'POST',
+        body: { code, site_constate: campagneData?.campagne?.site || 'Bouaké' }
+      });
+      setScanInput('');
+      setScanFeedback({
+        message: res.conforme
+          ? `✓ Équipement ${res.asset_tag} validé et conforme sur ${res.site_scanne} !`
+          : `⚠️ Anomalie détectée pour ${res.asset_tag} : attendu sur "${res.site_theorique || 'Inconnu'}", scanné sur "${res.site_scanne}".`,
+        type: res.conforme ? 'success' : 'warning'
+      });
+      await loadCampagneDetails(selectedCampagneId);
+      await loadCampagnes();
+    } catch (err: unknown) {
+      setScanFeedback({
+        message: err instanceof Error ? err.message : 'Erreur lors du scan',
+        type: 'error'
+      });
+    }
+  }
+
+  function handleExportCsv() {
+    if (!campagneData) return;
+    const scans = campagneData.scans || [];
+    const manquants = campagneData.manquants || [];
+    const rows = [
+      ['Campagne', campagneData.campagne.titre],
+      ['Site', campagneData.campagne.site],
+      ['Statut', campagneData.campagne.statut],
+      [],
+      ['Type de constat', 'Tag Machine', 'Marque & Modèle', 'Site Théorique', 'Site Constaté', 'Scanné Par', 'Date Scan'],
+      ...scans.map((s: any) => [
+        s.conforme ? 'CONFORME' : 'ANOMALIE DE SITE',
+        s.asset_tag,
+        `${s.marque || ''} ${s.modele || ''}`,
+        s.site_theorique || 'Non assigné',
+        s.site_scanne || '',
+        s.scanne_par || '',
+        s.scanned_at || ''
+      ]),
+      ...manquants.map((m: any) => [
+        'MANQUANT (NON TROUVÉ)',
+        m.asset_tag,
+        `${m.marque || ''} ${m.modele || ''}`,
+        m.site || '',
+        'ABSENT DU POINTAGE',
+        '',
+        ''
+      ])
+    ];
+
+    const csvContent = '\uFEFF' + rows.map((e) => e.map((val: unknown) => `"${String(val).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Audit_Inventaire_${campagneData.campagne.titre.replace(/\s+/g, '_')}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">AUDIT & INVENTAIRE PHYSIQUE</span>
+          <h1>Campagnes de Pointage Terrain</h1>
+          <p>Contrôle de présence physique des équipements sur les sites et détection des écarts.</p>
+        </div>
+        <div className="heading-actions">
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={() => setShowCreateModal(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <Plus size={15} /> Nouvelle Campagne
+          </button>
+        </div>
+      </div>
+
+      {/* Sélecteur de campagne active */}
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#64748b' }}>Campagne active :</span>
+        <select
+          className="select"
+          value={selectedCampagneId || ''}
+          onChange={(e) => setSelectedCampagneId(Number(e.target.value))}
+          style={{ minWidth: 280, fontWeight: 600 }}
+        >
+          {campagnes.map((c) => (
+            <option key={String(c.id)} value={String(c.id)}>
+              {String(c.titre)} • {String(c.site)} ({String(c.progression_pct || 0)}% pointé)
+            </option>
+          ))}
+          {campagnes.length === 0 && <option value="">Aucune campagne enregistrée</option>}
+        </select>
+        {campagneData && (
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={handleExportCsv}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <FileSpreadsheet size={15} /> Exporter PV d'Audit (CSV)
+          </button>
+        )}
+      </div>
+
+      {campagneData ? (
+        <>
+          {/* Synthèse et progression */}
+          <div className="audit-overview-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
+              <div>
+                <span style={{ fontSize: 12, letterSpacing: 0.5, color: '#38bdf8', textTransform: 'uppercase', fontWeight: 700 }}>
+                  SITE AUDITÉ : {campagneData.campagne.site}
+                </span>
+                <h2 style={{ margin: '4px 0 8px', fontSize: 22, color: '#fff' }}>{campagneData.campagne.titre}</h2>
+                <p style={{ margin: 0, fontSize: 13, color: '#94a3b8' }}>
+                  Créée par {campagneData.campagne.created_by} • Statut : <span style={{ color: '#22c55e', fontWeight: 700 }}>{campagneData.campagne.statut === 'en_cours' ? 'EN COURS DE POINTAGE' : 'CLÔTURÉE'}</span>
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 32, fontWeight: 900, color: '#38bdf8' }}>{campagneData.stats.progression_pct}%</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>Taux d'avancement</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Barre de progression */}
+            <div style={{ marginTop: 20, height: 8, background: 'rgba(255,255,255,0.15)', borderRadius: 4, overflow: 'hidden' }}>
+              <div
+                style={{
+                  height: '100%',
+                  width: `${campagneData.stats.progression_pct}%`,
+                  background: 'linear-gradient(90deg, #38bdf8, #22c55e)',
+                  borderRadius: 4,
+                  transition: 'width 0.4s ease'
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginTop: 20 }}>
+              <div style={{ background: 'rgba(255,255,255,0.06)', padding: 12, borderRadius: 10 }}>
+                <div style={{ fontSize: 11, color: '#94a3b8' }}>Attendu sur site</div>
+                <div style={{ fontSize: 20, fontWeight: 800 }}>{campagneData.stats.total_attendus}</div>
+              </div>
+              <div style={{ background: 'rgba(34, 197, 94, 0.15)', padding: 12, borderRadius: 10, border: '1px solid rgba(34, 197, 94, 0.3)' }}>
+                <div style={{ fontSize: 11, color: '#86efac' }}>Conformes pointés</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: '#4ade80' }}>{campagneData.stats.conformes}</div>
+              </div>
+              <div style={{ background: 'rgba(245, 158, 11, 0.15)', padding: 12, borderRadius: 10, border: '1px solid rgba(245, 158, 11, 0.3)' }}>
+                <div style={{ fontSize: 11, color: '#fde68a' }}>Anomalies de site</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: '#fbbf24' }}>{campagneData.stats.anomalies}</div>
+              </div>
+              <div style={{ background: 'rgba(239, 68, 68, 0.15)', padding: 12, borderRadius: 10, border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                <div style={{ fontSize: 11, color: '#fca5a5' }}>Manquants / Non vus</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: '#f87171' }}>{campagneData.stats.manquants}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Barre de scan terrain rapide */}
+          <div className="audit-scan-bar">
+            <input
+              type="text"
+              placeholder="Scanner ou saisir un Tag / Numéro de série..."
+              value={scanInput}
+              onChange={(e) => setScanInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleScanSubmit();
+              }}
+              style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, padding: '0 8px' }}
+            />
+            <button
+              type="button"
+              className="button button-secondary"
+              onClick={() => void handleScanSubmit()}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <PackageCheck size={16} /> Pointer
+            </button>
+            <button
+              type="button"
+              className="button button-primary"
+              onClick={() => setShowScanner(true)}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <ScanLine size={16} /> Scanner Caméra
+            </button>
+          </div>
+
+          {/* Notification feedback scan */}
+          {scanFeedback && (
+            <div
+              style={{
+                padding: '12px 16px',
+                borderRadius: 10,
+                marginBottom: 16,
+                fontSize: 13,
+                fontWeight: 600,
+                background: scanFeedback.type === 'success' ? '#dcfce7' : scanFeedback.type === 'warning' ? '#fef3c7' : '#fee2e2',
+                color: scanFeedback.type === 'success' ? '#166534' : scanFeedback.type === 'warning' ? '#92400e' : '#991b1b',
+                border: `1px solid ${scanFeedback.type === 'success' ? '#86efac' : scanFeedback.type === 'warning' ? '#fde68a' : '#fca5a5'}`
+              }}
+            >
+              {scanFeedback.message}
+            </div>
+          )}
+
+          {/* Onglets des résultats de pointage */}
+          <div className="audit-tabs">
+            <button
+              type="button"
+              className={`audit-tab-btn ${activeTab === 'tous' ? 'active' : ''}`}
+              onClick={() => setActiveTab('tous')}
+            >
+              Tous les scans ({campagneData.scans.length})
+            </button>
+            <button
+              type="button"
+              className={`audit-tab-btn ${activeTab === 'conformes' ? 'active' : ''}`}
+              onClick={() => setActiveTab('conformes')}
+            >
+              🟢 Conformes ({campagneData.stats.conformes})
+            </button>
+            <button
+              type="button"
+              className={`audit-tab-btn ${activeTab === 'anomalies' ? 'active' : ''}`}
+              onClick={() => setActiveTab('anomalies')}
+            >
+              🟡 Anomalies de site ({campagneData.stats.anomalies})
+            </button>
+            <button
+              type="button"
+              className={`audit-tab-btn ${activeTab === 'manquants' ? 'active' : ''}`}
+              onClick={() => setActiveTab('manquants')}
+            >
+              🔴 Manquants non pointés ({campagneData.stats.manquants})
+            </button>
+          </div>
+
+          {/* Table de pointage */}
+          <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Statut Constat</th>
+                  <th>Équipement / Tag</th>
+                  <th>Modèle & Type</th>
+                  <th>Site Enregistré</th>
+                  <th>Site Constaté</th>
+                  <th>Pointé par</th>
+                  <th>Date & Heure</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeTab !== 'manquants' &&
+                  campagneData.scans
+                    .filter((s: any) => {
+                      if (activeTab === 'conformes') return s.conforme === 1;
+                      if (activeTab === 'anomalies') return s.conforme === 0;
+                      return true;
+                    })
+                    .map((s: any) => (
+                      <tr key={String(s.id)}>
+                        <td>
+                          {s.conforme === 1 ? (
+                            <span className="audit-badge conforme">✓ Conforme</span>
+                          ) : (
+                            <span className="audit-badge anomalie">⚠️ Déplacé / Anomalie</span>
+                          )}
+                        </td>
+                        <td>
+                          <strong>{s.asset_tag}</strong>
+                        </td>
+                        <td>{s.marque} {s.modele} <span style={{ color: '#64748b', fontSize: 11 }}>({s.type})</span></td>
+                        <td>{s.site_theorique || 'Non assigné'}</td>
+                        <td><strong>{s.site_scanne}</strong></td>
+                        <td>{s.scanne_par}</td>
+                        <td style={{ fontSize: 11, color: '#64748b' }}>
+                          {s.scanned_at ? new Date(s.scanned_at).toLocaleString('fr-FR') : '-'}
+                        </td>
+                      </tr>
+                    ))}
+
+                {activeTab === 'manquants' &&
+                  campagneData.manquants.map((m: any) => (
+                    <tr key={String(m.id)}>
+                      <td>
+                        <span className="audit-badge manquant">Non pointé</span>
+                      </td>
+                      <td><strong>{m.asset_tag}</strong></td>
+                      <td>{m.marque} {m.modele} <span style={{ color: '#64748b', fontSize: 11 }}>({m.type})</span></td>
+                      <td>{m.site}</td>
+                      <td style={{ color: '#ef4444', fontStyle: 'italic' }}>Absent lors du passage</td>
+                      <td>-</td>
+                      <td>-</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        <div className="panel" style={{ textAlign: 'center', padding: 40 }}>
+          <ClipboardCheck size={48} color="#94a3b8" style={{ margin: '0 auto 12px' }} />
+          <h3>Aucune campagne d'inventaire sélectionnée</h3>
+          <p style={{ color: '#64748b', maxWidth: 400, margin: '0 auto 16px' }}>
+            Créez une première campagne d'audit pour commencer le pointage physique des machines sur site.
+          </p>
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={() => setShowCreateModal(true)}
+          >
+            Créer une Campagne d'Inventaire
+          </button>
+        </div>
+      )}
+
+      {/* Modal Création de Campagne */}
+      {showCreateModal && (
+        <div className="dialog-overlay" onClick={() => setShowCreateModal(false)}>
+          <div className="create-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+            <h3>Nouvelle Campagne d'Inventaire</h3>
+            <p style={{ color: '#64748b', fontSize: 12 }}>
+              Planifiez un pointage physique des machines pour un site spécifique.
+            </p>
+            <form onSubmit={handleCreateCampagne} style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 16 }}>
+              <div>
+                <label className="field-label">Titre de la campagne *</label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Ex: Inventaire Annuel Bouaké 2026"
+                  value={newTitre}
+                  onChange={(e) => setNewTitre(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="field-label">Site géographique cible</label>
+                <select className="select" value={newSite} onChange={(e) => setNewSite(e.target.value)}>
+                  <option value="Bouaké">Site de Bouaké (Siège)</option>
+                  <option value="Abidjan">Site d'Abidjan</option>
+                  <option value="Katiola">Site de Katiola</option>
+                  <option value="Tous">Tous les sites consolidés</option>
+                </select>
+              </div>
+              <div>
+                <label className="field-label">Notes ou instructions terrain</label>
+                <textarea
+                  className="input"
+                  rows={3}
+                  placeholder="Instructions pour les techniciens (bâtiments, horaires)..."
+                  value={newNotes}
+                  onChange={(e) => setNewNotes(e.target.value)}
+                />
+              </div>
+              <div className="dialog-actions">
+                <button type="button" className="button button-secondary" onClick={() => setShowCreateModal(false)}>
+                  Annuler
+                </button>
+                <button type="submit" className="button button-primary">
+                  Lancer la Campagne
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Scanner Caméra intégré */}
+      <QrScannerModal
+        isOpen={showScanner}
+        onClose={() => setShowScanner(false)}
+        onScan={(code) => {
+          void handleScanSubmit(code);
+        }}
+      />
+    </div>
+  );
+}

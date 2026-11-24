@@ -27,4 +27,14 @@ async function getAdvancedReports(req, res) {
   }
 }
 
-module.exports = { getStats, getAdvancedReports };
+async function getAmortissement(req, res) {
+  try {
+    const data = await DashboardModel.getAmortissementStats();
+    return success(res, data, 'Statistiques amortissement et budget');
+  } catch (err) {
+    logger.error('Erreur amortissement stats:', err);
+    return error(res, 'Erreur lors du calcul de l\'amortissement', 500);
+  }
+}
+
+module.exports = { getStats, getAdvancedReports, getAmortissement };

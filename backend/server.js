@@ -32,6 +32,7 @@ const maintenanceRoutes = require('./src/routes/maintenance.routes');
 const wikiRoutes = require('./src/routes/wiki.routes');
 const searchRoutes = require('./src/routes/search.routes');
 const publicTicketRoutes = require('./src/routes/public_ticket.routes');
+const auditRoutes = require('./src/routes/audit.routes');
 
 const http = require('http');
 const { Server } = require('socket.io');
@@ -184,6 +185,7 @@ app.use('/api/consommables', consommableRoutes);
 app.use('/api/maintenances', maintenanceRoutes);
 app.use('/api/wiki', wikiRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/audits', auditRoutes);
 app.use('/api/public', publicTicketRoutes);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/public', express.static(path.join(__dirname, 'public')));

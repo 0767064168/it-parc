@@ -433,6 +433,19 @@ async function generatePdf(req, res) {
        .text('Date : ___________________', 45, currentY + 78)
        .text('Signature :', 150, currentY + 78);
 
+    const sigBeneficiaire = req.body?.signature || req.query?.signature;
+    if (sigBeneficiaire && typeof sigBeneficiaire === 'string') {
+      try {
+        const base64Clean = sigBeneficiaire.replace(/^data:image\/\w+;base64,/, '');
+        const sigBuf = Buffer.from(base64Clean, 'base64');
+        doc.image(sigBuf, 140, currentY + 24, { fit: [140, 48], align: 'center' });
+        doc.fillColor('#15803d').fontSize(6).font('Helvetica-Bold')
+           .text('✓ Émargement numérique certifié', 45, currentY + 65);
+      } catch (errSig) {
+        logger.warn('Insertion signature PDF échouée:', errSig);
+      }
+    }
+
     doc.rect(305, currentY, 250, 95).strokeColor('#cbd5e1').stroke();
     doc.rect(305, currentY, 250, 18).fill('#f8fafc');
     doc.fillColor('#0f172a').fontSize(8).font('Helvetica-Bold')
@@ -604,6 +617,19 @@ async function generateRestitutionPdf(req, res) {
        .text(`Nom : ${aff.user_prenom || ''} ${aff.user_nom || ''}`, 45, currentY + 35)
        .text('Date : ___________________', 45, currentY + 78)
        .text('Signature :', 150, currentY + 78);
+
+    const sigRestituant = req.body?.signature || req.query?.signature;
+    if (sigRestituant && typeof sigRestituant === 'string') {
+      try {
+        const base64Clean = sigRestituant.replace(/^data:image\/\w+;base64,/, '');
+        const sigBuf = Buffer.from(base64Clean, 'base64');
+        doc.image(sigBuf, 140, currentY + 24, { fit: [140, 48], align: 'center' });
+        doc.fillColor('#15803d').fontSize(6).font('Helvetica-Bold')
+           .text('✓ Restitution émargée numériquement', 45, currentY + 65);
+      } catch (errSig) {
+        logger.warn('Insertion signature restitution PDF échouée:', errSig);
+      }
+    }
 
     doc.rect(305, currentY, 250, 95).strokeColor('#cbd5e1').stroke();
     doc.rect(305, currentY, 250, 18).fill('#f8fafc');

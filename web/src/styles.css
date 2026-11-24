@@ -1259,3 +1259,400 @@ a { color: inherit; text-decoration: none; }
   }
   .dialog-actions .button { width: 100%; min-height: 42px; }
 }
+
+/* ==========================================================================
+   1. Scanner QR Code Mobile & Desktop
+   ========================================================================== */
+.scanner-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(6px);
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.scanner-card {
+  background: #0f172a;
+  color: #fff;
+  border-radius: 18px;
+  width: 100%;
+  max-width: 480px;
+  overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  animation: slideUp 0.25s ease-out;
+}
+.scanner-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: rgba(30, 41, 59, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.scanner-viewport-wrapper {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #020617;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.scanner-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.scanner-target-box {
+  position: absolute;
+  width: 65%;
+  aspect-ratio: 1;
+  border: 2px dashed rgba(56, 189, 248, 0.8);
+  border-radius: 16px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.scanner-laser {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #22c55e, transparent);
+  box-shadow: 0 0 12px #22c55e;
+  animation: scanLaser 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes scanLaser {
+  0% { transform: translateY(0); opacity: 0.2; }
+  50% { transform: translateY(180px); opacity: 1; }
+  100% { transform: translateY(0); opacity: 0.2; }
+}
+.scanner-instructions {
+  padding: 14px 20px;
+  font-size: 12px;
+  color: #94a3b8;
+  text-align: center;
+  background: #0f172a;
+}
+.scanner-manual-input {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px 16px;
+}
+.scanner-manual-input input {
+  flex: 1;
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #fff;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+/* ==========================================================================
+   2. Planche d'impression d'étiquettes A4 (Batch Labels)
+   ========================================================================== */
+.batch-labels-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 1040;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.batch-labels-container {
+  background: #fff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 900px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: var(--shadow-xl);
+}
+[data-theme="dark"] .batch-labels-container {
+  background: var(--card-bg);
+}
+.batch-labels-toolbar {
+  padding: 16px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+  background: #f8fafc;
+}
+[data-theme="dark"] .batch-labels-toolbar {
+  background: #1e293b;
+}
+.batch-labels-grid {
+  padding: 24px;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  background: #f1f5f9;
+}
+[data-theme="dark"] .batch-labels-grid {
+  background: #0f172a;
+}
+.asset-label-sticker {
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #0f172a;
+}
+.asset-label-header {
+  font-size: 8px;
+  font-weight: 800;
+  color: #0284c7;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.asset-label-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.1;
+}
+.asset-label-sub {
+  font-size: 10px;
+  color: #475569;
+  margin-top: 3px;
+}
+.asset-label-sn {
+  font-size: 9px;
+  font-family: ui-monospace, monospace;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .printable-area, .printable-area * {
+    visibility: visible;
+  }
+  .printable-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 10mm;
+    background: #fff !important;
+  }
+  .batch-labels-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 4mm !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+  .asset-label-sticker {
+    border: 1px solid #94a3b8 !important;
+    page-break-inside: avoid;
+    box-shadow: none !important;
+  }
+}
+
+/* ==========================================================================
+   3. Signature Tactile Numérique (Signature Pad)
+   ========================================================================== */
+.signature-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(5px);
+  z-index: 1060;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.signature-card {
+  background: #fff;
+  border-radius: 18px;
+  width: 100%;
+  max-width: 520px;
+  overflow: hidden;
+  box-shadow: var(--shadow-xl);
+}
+[data-theme="dark"] .signature-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+}
+.signature-canvas-wrapper {
+  margin: 16px 20px;
+  background: #f8fafc;
+  border: 2px dashed #94a3b8;
+  border-radius: 12px;
+  position: relative;
+  touch-action: none;
+}
+[data-theme="dark"] .signature-canvas-wrapper {
+  background: #0f172a;
+  border-color: #334155;
+}
+.signature-canvas {
+  width: 100%;
+  height: 200px;
+  display: block;
+  cursor: crosshair;
+}
+.signature-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #94a3b8;
+  font-size: 13px;
+  pointer-events: none;
+  opacity: 0.6;
+  user-select: none;
+}
+
+/* ==========================================================================
+   4. Module Campagnes d'Inventaire & Audits
+   ========================================================================== */
+.audit-overview-card {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  color: #fff;
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.25);
+}
+.audit-progress-ring-box {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.audit-scan-bar {
+  display: flex;
+  gap: 10px;
+  margin: 20px 0;
+  background: #fff;
+  padding: 10px;
+  border-radius: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--border-color);
+}
+[data-theme="dark"] .audit-scan-bar {
+  background: var(--card-bg);
+}
+.audit-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 8px;
+}
+.audit-tab-btn {
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+.audit-tab-btn.active {
+  background: #0284c7;
+  color: #fff;
+}
+.audit-badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.audit-badge.conforme { background: #dcfce7; color: #166534; }
+.audit-badge.anomalie { background: #fef3c7; color: #92400e; }
+.audit-badge.manquant { background: #fee2e2; color: #991b1b; }
+
+/* ==========================================================================
+   5. Pilotage Financier & Amortissement
+   ========================================================================== */
+.finance-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.finance-card {
+  background: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+[data-theme="dark"] .finance-card {
+  background: var(--card-bg);
+}
+.finance-amount {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 8px 0 4px;
+}
+[data-theme="dark"] .finance-amount {
+  color: #f8fafc;
+}
+.finance-age-pyramid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+.finance-pyramid-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.finance-pyramid-label {
+  width: 110px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+}
+.finance-pyramid-bar-bg {
+  flex: 1;
+  height: 12px;
+  background: #e2e8f0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+[data-theme="dark"] .finance-pyramid-bar-bg {
+  background: #334155;
+}
+.finance-pyramid-bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.4s ease;
+}
+
