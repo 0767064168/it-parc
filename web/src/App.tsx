@@ -866,18 +866,43 @@ function ModulePage({ path }: { path: string }) {
   const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [siteFilter, setSiteFilter] = useState('');
+  const [deptFilter, setDeptFilter] = useState('');
+  const [statutFilterState, setStatutFilterState] = useState('');
 
   const rows = useMemo(() => extractRows(payload), [payload]);
+  const filteredRows = useMemo(() => {
+    let result = rows;
+    if (siteFilter) {
+      const q = siteFilter.toLowerCase();
+      result = result.filter((r) => {
+        const s = String(r.site ?? (asRecord(r.user)?.site) ?? '').toLowerCase();
+        return s.includes(q);
+      });
+    }
+    if (deptFilter) {
+      const q = deptFilter.toLowerCase();
+      result = result.filter((r) => {
+        const d = String(r.departement ?? (asRecord(r.user)?.departement) ?? '').toLowerCase();
+        return d.includes(q);
+      });
+    }
+    if (statutFilterState && path === '/assets') {
+      result = result.filter((r) => String(r.statut ?? '').toLowerCase() === statutFilterState.toLowerCase());
+    }
+    return result;
+  }, [rows, siteFilter, deptFilter, statutFilterState, path]);
+
   const sortedRows = useMemo(() => {
-    if (!sortField) return rows;
-    return [...rows].sort((a, b) => {
+    if (!sortField) return filteredRows;
+    return [...filteredRows].sort((a, b) => {
       const valA = String(getPath(a, sortField) ?? '').toLowerCase();
       const valB = String(getPath(b, sortField) ?? '').toLowerCase();
       if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
       if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [rows, sortField, sortOrder]);
+  }, [filteredRows, sortField, sortOrder]);
 
   function handleSort(key: string) {
     if (sortField === key) {
@@ -918,6 +943,25 @@ function ModulePage({ path }: { path: string }) {
       a.remove();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : 'Erreur lors du téléchargement du PDF');
+    } finally {
+      setDownloadingPdfId(null);
+    }
+  }
+
+  async function handleDownloadRestitutionPdf(affectationId: number, tag?: string) {
+    try {
+      setDownloadingPdfId(affectationId);
+      const blob = await apiDownload(`/affectations/${affectationId}/restitution-pdf`, { token });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Fiche_Restitution_${tag || affectationId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur lors du téléchargement du PV de restitution');
     } finally {
       setDownloadingPdfId(null);
     }
@@ -975,7 +1019,9 @@ function ModulePage({ path }: { path: string }) {
       token,
       query: {
         ...(definition.paginated ? { page, limit: 20 } : {}),
-        ...(statusFilter ? { statut: statusFilter } : {}),
+        ...(statusFilter ? { statut: statusFilter } : statutFilterState ? { statut: statutFilterState } : {}),
+        ...(siteFilter ? { site: siteFilter } : {}),
+        ...(deptFilter ? { departement: deptFilter } : {}),
         ...(definition.canSearch && submittedQuery ? { search: submittedQuery } : {}),
       },
     }).then((result) => {
@@ -986,7 +1032,7 @@ function ModulePage({ path }: { path: string }) {
       if (active) setLoading(false);
     });
     return () => { active = false; };
-  }, [definition, page, refreshKey, statusFilter, submittedQuery, token]);
+  }, [definition, page, refreshKey, statusFilter, statutFilterState, siteFilter, deptFilter, submittedQuery, token]);
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1018,20 +1064,34 @@ function ModulePage({ path }: { path: string }) {
                   </div>
                 ))}
             </div>
-            <div className="dialog-actions" style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <div className="dialog-actions" style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
               {path === '/affectations' && Boolean(selectedRow.id) && (
-                <button
-                  type="button"
-                  className="button button-primary"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                  disabled={downloadingPdfId === Number(selectedRow.id)}
-                  onClick={() => {
-                    handleDownloadPdf(Number(selectedRow.id), String(selectedRow.asset_tag ?? ''));
-                  }}
-                >
-                  <Download size={15} />
-                  {downloadingPdfId === Number(selectedRow.id) ? 'Génération en cours…' : 'Télécharger Fiche d’Attribution (PDF)'}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="button button-primary"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    disabled={downloadingPdfId === Number(selectedRow.id)}
+                    onClick={() => {
+                      handleDownloadPdf(Number(selectedRow.id), String(selectedRow.asset_tag ?? ''));
+                    }}
+                  >
+                    <Download size={15} />
+                    {downloadingPdfId === Number(selectedRow.id) ? 'Génération en cours…' : 'Fiche d’Attribution (PDF)'}
+                  </button>
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    disabled={downloadingPdfId === Number(selectedRow.id)}
+                    onClick={() => {
+                      void handleDownloadRestitutionPdf(Number(selectedRow.id), String(selectedRow.asset_tag ?? ''));
+                    }}
+                  >
+                    <Download size={15} />
+                    {downloadingPdfId === Number(selectedRow.id) ? 'Génération en cours…' : 'PV Restitution (PDF)'}
+                  </button>
+                </>
               )}
               {path === '/assets' && Boolean(selectedRow.id) && (
                 <button
@@ -1187,8 +1247,93 @@ function ModulePage({ path }: { path: string }) {
             <Link to="/assets">Effacer le filtre</Link>
           </div>
         )}
+        {(path === '/assets' || path === '/affectations') && (
+          <div className="filter-bar">
+            <div className="filter-group">
+              <span className="filter-label">Site :</span>
+              <div className="filter-pills">
+                {['', 'BOUAKE', 'ABIDJAN', 'BOUAFLE', 'KATIOLA'].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className={`filter-pill ${siteFilter === s ? 'active' : ''}`}
+                    onClick={() => { setSiteFilter(s); setPage(1); }}
+                  >
+                    {s === '' ? 'Tous les sites' : s}
+                  </button>
+                ))}
+              </div>
+              <select
+                className="filter-select"
+                value={['', 'BOUAKE', 'ABIDJAN', 'BOUAFLE', 'KATIOLA'].includes(siteFilter) ? '' : siteFilter}
+                onChange={(e) => { setSiteFilter(e.target.value); setPage(1); }}
+                title="Autre site"
+              >
+                <option value="">Autres sites…</option>
+                {['AZAGUIE', 'DJEBOA', 'YAMOUSSOUKRO'].map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="filter-group">
+              <span className="filter-label">Département :</span>
+              <select
+                className="filter-select"
+                value={deptFilter}
+                onChange={(e) => { setDeptFilter(e.target.value); setPage(1); }}
+              >
+                <option value="">Tous les départements</option>
+                <option value="Direction IT">Direction IT</option>
+                <option value="CAJOOMA">CAJOOMA</option>
+                <option value="COMPTABILITE">COMPTABILITE</option>
+                <option value="Commercial">Commercial</option>
+                <option value="RH">Ressources Humaines</option>
+                <option value="Logistique">Logistique</option>
+                <option value="Direction Générale">Direction Générale</option>
+              </select>
+            </div>
+
+            {path === '/assets' && (
+              <div className="filter-group">
+                <span className="filter-label">Statut :</span>
+                <select
+                  className="filter-select"
+                  value={statutFilterState}
+                  onChange={(e) => { setStatutFilterState(e.target.value); setPage(1); }}
+                >
+                  <option value="">Tous les statuts</option>
+                  <option value="en_service">En service</option>
+                  <option value="en_stock">En stock</option>
+                  <option value="en_maintenance">En maintenance</option>
+                  <option value="hors_service">Hors service</option>
+                  <option value="reforme">Réformé</option>
+                </select>
+              </div>
+            )}
+
+            {(siteFilter || deptFilter || statutFilterState) && (
+              <button
+                type="button"
+                className="clear-filter-btn"
+                onClick={() => {
+                  setSiteFilter('');
+                  setDeptFilter('');
+                  setStatutFilterState('');
+                  setPage(1);
+                }}
+              >
+                <X size={12} /> Réinitialiser
+              </button>
+            )}
+          </div>
+        )}
         <div className="module-toolbar">
-          <div className="module-count">{loading ? 'Chargement…' : `${rows.length} résultat${rows.length > 1 ? 's' : ''}`}</div>
+          <div className="module-count">
+            {loading
+              ? 'Chargement…'
+              : `${filteredRows.length} résultat${filteredRows.length > 1 ? 's' : ''}${filteredRows.length !== rows.length ? ` (sur ${rows.length})` : ''}`}
+          </div>
           {definition.canSearch && (
             <form className="table-search" onSubmit={submitSearch}>
               <Search size={15} />
@@ -1217,7 +1362,7 @@ function ModulePage({ path }: { path: string }) {
                       </span>
                     </th>
                   ))}
-                  <th style={{ width: canEdit || canDelete || path === '/affectations' || path === '/assets' ? 220 : 50, textAlign: 'center' }}>Actions</th>
+                  <th style={{ width: path === '/affectations' ? 280 : (canEdit || canDelete || path === '/assets' ? 220 : 60), textAlign: 'center' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1241,20 +1386,36 @@ function ModulePage({ path }: { path: string }) {
                     <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
                         {path === '/affectations' && (
-                          <button
-                            type="button"
-                            className="button button-secondary"
-                            style={{ padding: '2px 8px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4, height: 26 }}
-                            title="Télécharger la fiche d'attribution PDF"
-                            disabled={downloadingPdfId === Number(row.id)}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDownloadPdf(Number(row.id), String(row.asset_tag ?? ''));
-                            }}
-                          >
-                            <Download size={12} />
-                            {downloadingPdfId === Number(row.id) ? '...' : 'PDF'}
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              className="button button-secondary"
+                              style={{ padding: '2px 8px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4, height: 26 }}
+                              title="Télécharger la fiche d'attribution PDF"
+                              disabled={downloadingPdfId === Number(row.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDownloadPdf(Number(row.id), String(row.asset_tag ?? ''));
+                              }}
+                            >
+                              <Download size={12} />
+                              {downloadingPdfId === Number(row.id) ? '...' : 'Attribution'}
+                            </button>
+                            <button
+                              type="button"
+                              className="button button-secondary"
+                              style={{ padding: '2px 8px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4, height: 26 }}
+                              title="Télécharger le PV officiel de restitution et décharge (PDF)"
+                              disabled={downloadingPdfId === Number(row.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleDownloadRestitutionPdf(Number(row.id), String(row.asset_tag ?? ''));
+                              }}
+                            >
+                              <Download size={12} />
+                              <span>Restitution</span>
+                            </button>
+                          </>
                         )}
                         {path === '/assets' && (
                           <button

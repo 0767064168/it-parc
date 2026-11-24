@@ -16,7 +16,7 @@ const logger = require('../utils/logger');
 
 async function list(req, res) {
   try {
-    const { page = 1, limit = 20, asset_id, user_id, actif } = req.query;
+    const { page = 1, limit = 20, asset_id, user_id, actif, site, departement, search } = req.query;
     const offset = (page - 1) * limit;
     const conditions = [];
     const params = [];
@@ -24,6 +24,12 @@ async function list(req, res) {
     if (asset_id) { conditions.push('af.asset_id = ?'); params.push(parseInt(asset_id)); }
     if (user_id)  { conditions.push('af.user_id = ?');  params.push(parseInt(user_id)); }
     if (actif !== undefined) { conditions.push('af.actif = ?'); params.push(actif === 'true' ? 1 : 0); }
+    if (site) { conditions.push('(u.site ILIKE ? OR a.site ILIKE ?)'); params.push(`%${site}%`, `%${site}%`); }
+    if (departement) { conditions.push('(u.departement ILIKE ? OR a.departement ILIKE ?)'); params.push(`%${departement}%`, `%${departement}%`); }
+    if (search) {
+      conditions.push('(a.`Nom Machine` ILIKE ? OR a.serial_number ILIKE ? OR u.nom ILIKE ? OR u.prenom ILIKE ?)');
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    }
 
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
@@ -429,4 +435,176 @@ async function generatePdf(req, res) {
   }
 }
 
-module.exports = { list, create, retrait, update, remove, generatePdf };
+async function generateRestitutionPdf(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return error(res, 'ID d\'affectation invalide', 400);
+
+    if (!PDFDocument) {
+      PDFDocument = require('pdfkit');
+    }
+    if (!PDFDocument) {
+      return error(res, 'Générateur PDF non disponible', 500);
+    }
+
+    const rows = await query(`
+      SELECT 
+        af.id, af.date_attribution, af.date_retrait, af.motif, af.actif,
+        a.id as asset_id, a.\`Nom Machine\` as asset_tag, a.serial_number, a.marque, a.modele, a.type, a.statut,
+        a.site as asset_site, a.departement as asset_dept,
+        u.id as user_id, u.nom as user_nom, u.prenom as user_prenom, u.departement as user_dept, u.site as user_site,
+        u.email as user_email, u.telephone as user_tel,
+        s.ram, s.stockage, s.cpu, s.os, s.version_os, s.mac_address, s.imei
+      FROM affectations af
+      JOIN assets a ON a.id = af.asset_id
+      JOIN utilisateurs u ON u.id = af.user_id
+      LEFT JOIN specs s ON s.asset_id = a.id
+      WHERE af.id = ?
+    `, [id]);
+
+    if (!rows || rows.length === 0) {
+      return error(res, 'Affectation introuvable', 404);
+    }
+
+    const aff = rows[0];
+
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 40,
+      info: {
+        Title: `Fiche de restitution - ${aff.asset_tag || aff.id}`,
+        Author: 'Direction IT',
+        Subject: 'Procès-verbal de décharge et restitution de matériel informatique',
+      }
+    });
+
+    const filename = `Fiche_Restitution_${aff.asset_tag || aff.id}.pdf`;
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/pdf');
+    doc.pipe(res);
+
+    // En-tête bandeau bleu foncé / ardoise
+    doc.rect(40, 40, 515, 68).fill('#1e293b');
+    
+    doc.fillColor('#f59e0b').fontSize(9).font('Helvetica-Bold')
+       .text('DIRECTION DES SYSTÈMES D\'INFORMATION & DU PARC IT', 55, 52);
+    
+    doc.fillColor('#ffffff').fontSize(13).font('Helvetica-Bold')
+       .text('PROCÈS-VERBAL DE RESTITUTION DE MATÉRIEL IT', 55, 67);
+
+    doc.fillColor('#94a3b8').fontSize(8).font('Helvetica')
+       .text('Fiche officielle de décharge, contrôle technique et réintégration au parc informatique', 55, 87);
+
+    const dateRestitution = aff.date_retrait 
+      ? new Date(aff.date_retrait).toLocaleDateString('fr-FR')
+      : new Date().toLocaleDateString('fr-FR');
+    const dateAttr = aff.date_attribution 
+      ? new Date(aff.date_attribution).toLocaleDateString('fr-FR')
+      : '—';
+      
+    doc.fillColor('#ffffff').fontSize(9).font('Helvetica-Bold')
+       .text(`N° REST-${String(aff.id).padStart(4, '0')}`, 430, 52, { align: 'right', width: 110 });
+    doc.fillColor('#cbd5e1').fontSize(8).font('Helvetica')
+       .text(`Restitué le : ${dateRestitution}`, 430, 68, { align: 'right', width: 110 });
+    doc.fillColor('#f59e0b').fontSize(8).font('Helvetica-Bold')
+       .text('DÉCHARGE RETOUR', 430, 84, { align: 'right', width: 110 });
+
+    let currentY = 122;
+
+    function drawSectionHeader(title, y) {
+      doc.rect(40, y, 515, 20).fill('#f1f5f9');
+      doc.rect(40, y, 4, 20).fill('#d97706');
+      doc.fillColor('#0f172a').fontSize(8.5).font('Helvetica-Bold').text(title.toUpperCase(), 50, y + 6);
+      return y + 26;
+    }
+
+    function drawRow(label1, val1, label2, val2, y) {
+      doc.fillColor('#64748b').fontSize(8).font('Helvetica-Bold').text(label1, 45, y);
+      doc.fillColor('#0f172a').fontSize(8.5).font('Helvetica').text(String(val1 || '—'), 160, y, { width: 120, ellipsis: true });
+      
+      if (label2) {
+        doc.fillColor('#64748b').fontSize(8).font('Helvetica-Bold').text(label2, 290, y);
+        doc.fillColor('#0f172a').fontSize(8.5).font('Helvetica').text(String(val2 || '—'), 405, y, { width: 145, ellipsis: true });
+      }
+      return y + 17;
+    }
+
+    // 1. Bénéficiaire restituant
+    currentY = drawSectionHeader('1. Collaborateur Restituant le Matériel', currentY);
+    currentY = drawRow('Nom & Prénom :', `${aff.user_nom || ''} ${aff.user_prenom || ''}`.trim() || '—', 'Département / Service :', aff.user_dept || aff.asset_dept || '—', currentY);
+    currentY = drawRow('Site / Localisation :', aff.user_site || aff.asset_site || '—', 'Email professionnel :', aff.user_email || '—', currentY);
+    currentY = drawRow('Période d\'utilisation :', `Attribué le ${dateAttr}`, 'Date de restitution effective :', dateRestitution, currentY);
+    currentY += 6;
+
+    // 2. Équipement restitué
+    currentY = drawSectionHeader('2. Équipement Informatique Restitué', currentY);
+    currentY = drawRow('Nom Machine (Tag) :', aff.asset_tag || '—', 'Type d\'équipement :', (aff.type || '—').toUpperCase(), currentY);
+    currentY = drawRow('Marque & Modèle :', `${aff.marque || ''} ${aff.modele || ''}`.trim() || '—', 'Numéro de Série (S/N) :', aff.serial_number || '—', currentY);
+    if (aff.imei || aff.mac_address) {
+      currentY = drawRow('IMEI / Adresse MAC :', aff.imei || aff.mac_address || '—', 'Motif restitution :', aff.motif || 'Retour de matériel', currentY);
+    } else {
+      currentY = drawRow('Motif de restitution :', aff.motif || 'Fin de mission / Départ / Renouvellement', '', '', currentY);
+    }
+    currentY += 6;
+
+    // 3. Contrôle technique et état des accessoires
+    currentY = drawSectionHeader('3. Constat Physique, Accessoires & Restitution', currentY);
+    currentY = drawRow('État physique du matériel :', 'Bon état général / Conforme', 'Chargeur / Bloc secteur :', 'Restitué avec le poste', currentY);
+    currentY = drawRow('Sacoche / Câbles / Adaptateur :', 'Restitué complet', 'Écran & Châssis :', 'Aucun dommage apparent', currentY);
+    currentY += 6;
+
+    // 4. Checklist Sécurité & Procédure IT
+    currentY = drawSectionHeader('4. Procédure de Réintégration & Sécurité IT', currentY);
+    currentY = drawRow('Sauvegarde données utilisateur :', 'Effectuée / Validée', 'Réinitialisation du poste :', 'En cours / Planifiée', currentY);
+    currentY = drawRow('Déconnexion Entra ID / M365 :', 'Profils révoqués', 'Statut après réintégration :', 'Remis en stock IT', currentY);
+    currentY += 8;
+
+    // 5. Décharge de responsabilité
+    currentY = drawSectionHeader('5. Décharge Mutuelle & Clôture de Prêt', currentY);
+    doc.fillColor('#334155').fontSize(7.5).font('Helvetica');
+    const terms = [
+      '• Le collaborateur atteste avoir remis l\'ensemble du matériel, chargeur et accessoires qui lui avaient été confiés.',
+      '• La Direction IT donne quitus au collaborateur pour la garde de cet équipement sous réserve des vérifications techniques.',
+      '• Le collaborateur confirme n\'avoir conservé aucune copie de données professionnelles confidentielles sur des supports personnels.',
+      '• La présente fiche vaut décharge complète et clôture définitive de l\'affectation N° AFF-' + String(aff.id).padStart(4, '0') + '.'
+    ];
+    terms.forEach(term => {
+      doc.text(term, 45, currentY, { width: 505 });
+      currentY += 12;
+    });
+    currentY += 8;
+
+    // 6. Cadre des Signatures
+    doc.rect(40, currentY, 250, 95).strokeColor('#cbd5e1').stroke();
+    doc.rect(40, currentY, 250, 18).fill('#f8fafc');
+    doc.fillColor('#0f172a').fontSize(8).font('Helvetica-Bold')
+       .text('LE COLLABORATEUR RESTITUANT', 45, currentY + 5);
+    doc.fillColor('#64748b').fontSize(7).font('Helvetica')
+       .text('Mention "Restitution effectuée en bon état" :', 45, currentY + 23)
+       .text(`Nom : ${aff.user_prenom || ''} ${aff.user_nom || ''}`, 45, currentY + 35)
+       .text('Date : ___________________', 45, currentY + 78)
+       .text('Signature :', 150, currentY + 78);
+
+    doc.rect(305, currentY, 250, 95).strokeColor('#cbd5e1').stroke();
+    doc.rect(305, currentY, 250, 18).fill('#f8fafc');
+    doc.fillColor('#0f172a').fontSize(8).font('Helvetica-Bold')
+       .text('POUR LA DIRECTION IT (RÉCEPTION)', 310, currentY + 5);
+    doc.fillColor('#64748b').fontSize(7).font('Helvetica')
+       .text('Réception, contrôle technique et quitus accordé :', 310, currentY + 23)
+       .text('Gestionnaire du Parc / Support IT', 310, currentY + 35)
+       .text('Date : ___________________', 310, currentY + 78)
+       .text('Cachet & Signature :', 415, currentY + 78);
+
+    // Bas de page
+    doc.fillColor('#94a3b8').fontSize(7).font('Helvetica')
+       .text('Direction IT Bouaké • Procès-Verbal Officiel de Restitution de Matériel Informatique', 40, 785, { align: 'center', width: 515 });
+
+    doc.end();
+
+  } catch (err) {
+    logger.error('Erreur generateRestitutionPdf affectation:', err);
+    return error(res, 'Erreur lors de la génération du procès-verbal de restitution', 500);
+  }
+}
+
+module.exports = { list, create, retrait, update, remove, generatePdf, generateRestitutionPdf };

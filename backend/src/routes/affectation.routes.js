@@ -11,6 +11,7 @@ router.use(authenticate);
 
 router.get('/', requirePermission('affectations:read'), ctrl.list);
 router.get('/:id/pdf', requirePermission('affectations:read'), ctrl.generatePdf);
+router.get('/:id/restitution-pdf', requirePermission('affectations:read'), ctrl.generateRestitutionPdf);
 
 router.post('/',
   requirePermission('affectations:manage'),
