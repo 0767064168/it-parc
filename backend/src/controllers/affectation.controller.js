@@ -137,23 +137,43 @@ async function create(req, res) {
 
 async function retrait(req, res) {
   try {
-    const { asset_id, motif, nouveau_statut = 'hors_service' } = req.body;
+    const { id, affectation_id, asset_id, motif = 'Restitution matériel', nouveau_statut = 'en_stock' } = req.body;
+    const targetAffId = parseInt(id || affectation_id || (req.params ? req.params.id : 0)) || null;
+
+    let resolvedAssetId = asset_id ? parseInt(asset_id) : null;
+    if (!resolvedAssetId && targetAffId) {
+      const rows = await query('SELECT asset_id FROM affectations WHERE id = ?', [targetAffId]);
+      if (rows && rows.length > 0) {
+        resolvedAssetId = rows[0].asset_id;
+      }
+    }
+
+    if (!resolvedAssetId) {
+      return error(res, 'ID d\'équipement ou d\'affectation requis', 400);
+    }
 
     await transaction(async (conn) => {
-      await conn.execute(
-        'UPDATE affectations SET actif = 0, date_retrait = NOW(), motif = ? WHERE asset_id = ? AND actif = 1',
-        [motif, asset_id]
-      );
+      if (targetAffId) {
+        await conn.execute(
+          'UPDATE affectations SET actif = 0, date_retrait = NOW(), motif = ? WHERE id = ?',
+          [motif, targetAffId]
+        );
+      } else {
+        await conn.execute(
+          'UPDATE affectations SET actif = 0, date_retrait = NOW(), motif = ? WHERE asset_id = ? AND actif = 1',
+          [motif, resolvedAssetId]
+        );
+      }
       await conn.execute(
         'UPDATE assets SET statut = ?, updated_at = NOW() WHERE id = ?',
-        [nouveau_statut, asset_id]
+        [nouveau_statut, resolvedAssetId]
       );
     });
 
-    return success(res, null, 'Retrait enregistré');
+    return success(res, { asset_id: resolvedAssetId, affectation_id: targetAffId, statut: nouveau_statut }, 'Restitution enregistrée avec succès');
   } catch (err) {
-    logger.error('Erreur retrait:', err);
-    return error(res, 'Erreur lors du retrait', 500);
+    logger.error('Erreur retrait/restitution:', err);
+    return error(res, 'Erreur lors de la restitution: ' + err.message, 500);
   }
 }
 

@@ -32,10 +32,11 @@ router.post('/',
 
 router.post('/retrait',
   requirePermission('affectations:manage'),
-  [
-    body('asset_id').isInt().withMessage('asset_id requis'),
-  ],
-  validate,
+  ctrl.retrait
+);
+
+router.post('/:id/restitution',
+  requirePermission('affectations:manage'),
   ctrl.retrait
 );
 

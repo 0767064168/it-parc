@@ -40,6 +40,10 @@ import {
   Trash2,
   QrCode,
   Printer,
+  RotateCcw,
+  FileSpreadsheet,
+  History,
+  AlertTriangle,
   type LucideIcon,
 } from 'lucide-react';
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useSearchParams } from 'react-router-dom';
@@ -63,6 +67,7 @@ type DashboardData = {
   licences_expirant_bientot?: number;
   stock_critique?: number;
   maintenances_planifiees?: number;
+  tickets_urgents?: number;
   alertes_garanties?: Array<{
     id: number;
     asset_tag: string;
@@ -83,6 +88,27 @@ type DashboardData = {
     statut?: string;
   }>;
 };
+
+function exportToCsv(filename: string, columns: Array<{ key: string; label: string }>, rows: Array<Record<string, unknown>>) {
+  const header = columns.map((c) => `"${c.label.replace(/"/g, '""')}"`).join(';');
+  const lines = rows.map((r) => {
+    return columns.map((c) => {
+      const val = getPath(r, c.key);
+      const text = cellText(val);
+      return `"${text.replace(/"/g, '""')}"`;
+    }).join(';');
+  });
+  const csvContent = '\uFEFF' + [header, ...lines].join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  URL.revokeObjectURL(url);
+  a.remove();
+}
 
 type NavigationItem = {
   label: string;
@@ -632,6 +658,39 @@ function DashboardPage() {
         </div>
       )}
 
+      {Boolean(
+        (stats?.stock_critique && stats.stock_critique > 0) ||
+        (stats?.licences_expirant_bientot && stats.licences_expirant_bientot > 0) ||
+        (stats?.tickets_urgents && stats.tickets_urgents > 0) ||
+        (stats?.non_conformes && stats.non_conformes > 0)
+      ) && (
+        <div className="dashboard-alerts-banner">
+          <div className="alerts-banner-title">
+            <AlertTriangle size={16} /> Alertes opérationnelles :
+          </div>
+          {Boolean(stats?.stock_critique && stats.stock_critique > 0) && (
+            <Link to="/consommables" className="alert-pill-item alert-pill-red" title="Consommables sous le seuil d'alerte">
+              <Package size={13} /> {stats?.stock_critique} stock{stats?.stock_critique && stats.stock_critique > 1 ? 's' : ''} critique{stats?.stock_critique && stats.stock_critique > 1 ? 's' : ''}
+            </Link>
+          )}
+          {Boolean(stats?.licences_expirant_bientot && stats.licences_expirant_bientot > 0) && (
+            <Link to="/licences" className="alert-pill-item alert-pill-amber" title="Licences à renouveler sous 90 jours">
+              <ShieldCheck size={13} /> {stats?.licences_expirant_bientot} licence{stats?.licences_expirant_bientot && stats.licences_expirant_bientot > 1 ? 's' : ''} à renouveler
+            </Link>
+          )}
+          {Boolean(stats?.tickets_urgents && stats.tickets_urgents > 0) && (
+            <Link to="/tickets" className="alert-pill-item alert-pill-red" title="Tickets d'incidents ou pannes prioritaires">
+              <Ticket size={13} /> {stats?.tickets_urgents} ticket{stats?.tickets_urgents && stats.tickets_urgents > 1 ? 's' : ''} prioritaire{stats?.tickets_urgents && stats.tickets_urgents > 1 ? 's' : ''}
+            </Link>
+          )}
+          {Boolean(stats?.non_conformes && stats.non_conformes > 0) && (
+            <Link to="/reports" className="alert-pill-item alert-pill-blue" title="Équipements avec contrôles de sécurité incomplets">
+              <Laptop size={13} /> {stats?.non_conformes} anomalie{stats?.non_conformes && stats.non_conformes > 1 ? 's' : ''} sécurité
+            </Link>
+          )}
+        </div>
+      )}
+
       <div className="stats-grid">
         {cards.map(({ label, value, icon: Icon, tone, note, to }) => (
           <Link className={`stat-card stat-card-link tone-${tone}`} key={label} to={to} aria-label={`${label} : consulter les données`}>
@@ -920,6 +979,62 @@ function ModulePage({ path }: { path: string }) {
   const [downloadingPdfId, setDownloadingPdfId] = useState<number | null>(null);
   const [qrModalAsset, setQrModalAsset] = useState<{ id: number; tag: string; dataUrl: string; asset: Record<string, unknown> } | null>(null);
 
+  // États pour la restitution 1-clic
+  const [restitutionItem, setRestitutionItem] = useState<Record<string, unknown> | null>(null);
+  const [restitutionMotif, setRestitutionMotif] = useState('Départ collaborateur / Fin de mission');
+  const [restitutionStatut, setRestitutionStatut] = useState('en_stock');
+  const [isSubmittingRestitution, setIsSubmittingRestitution] = useState(false);
+
+  // États pour la Timeline et l'historique complet d'un équipement
+  const [assetDetail, setAssetDetail] = useState<Record<string, unknown> | null>(null);
+  const [activeModalTab, setActiveModalTab] = useState<'info' | 'history'>('info');
+  const [loadingAssetDetail, setLoadingAssetDetail] = useState(false);
+
+  useEffect(() => {
+    if (selectedRow && path === '/assets' && selectedRow.id) {
+      setActiveModalTab('info');
+      setLoadingAssetDetail(true);
+      apiRequest<Record<string, unknown>>(`/assets/${selectedRow.id}`, { token })
+        .then((data) => setAssetDetail(data))
+        .catch(() => setAssetDetail(null))
+        .finally(() => setLoadingAssetDetail(false));
+    } else {
+      setAssetDetail(null);
+    }
+  }, [selectedRow, path, token]);
+
+  async function handleConfirmRestitution() {
+    if (!restitutionItem) return;
+    setIsSubmittingRestitution(true);
+    try {
+      const affId = Number(restitutionItem.id);
+      const assetId = Number(restitutionItem.asset_id);
+      await apiRequest(`/affectations/${affId}/restitution`, {
+        method: 'POST',
+        token,
+        body: {
+          motif: restitutionMotif,
+          nouveau_statut: restitutionStatut,
+          asset_id: assetId,
+        },
+      });
+      setSuccessMessage('Équipement restitué et réintégré au stock avec succès ! Procès-verbal téléchargé.');
+      void handleDownloadRestitutionPdf(affId, String(restitutionItem.asset_tag ?? ''));
+      setRestitutionItem(null);
+      setRefreshKey((c) => c + 1);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur lors de la restitution');
+    } finally {
+      setIsSubmittingRestitution(false);
+    }
+  }
+
+  function handleExportCsv() {
+    const slug = path.replace('/', '') || 'export';
+    const date = new Date().toISOString().split('T')[0];
+    exportToCsv(`${slug}_${date}.csv`, definition.columns, filteredRows);
+  }
+
   async function handleShowQr(assetId: number, tag?: string) {
     try {
       const res = await apiRequest<{ dataUrl: string; asset: Record<string, unknown> }>(`/assets/${assetId}/qr`, { token });
@@ -1054,16 +1169,103 @@ function ModulePage({ path }: { path: string }) {
                 <X size={18} />
               </button>
             </div>
-            <div className="detail-grid">
-              {Object.entries(selectedRow)
-                .filter(([k, v]) => typeof v !== 'object' && v !== null && k !== 'deleted_at')
-                .map(([key, val]) => (
-                  <div className="detail-item" key={key}>
-                    <span>{key.replace(/_/g, ' ')}</span>
-                    <strong>{String(val)}</strong>
-                  </div>
-                ))}
-            </div>
+
+            {path === '/assets' && (
+              <div className="modal-tabs">
+                <button
+                  type="button"
+                  className={`modal-tab-btn ${activeModalTab === 'info' ? 'active' : ''}`}
+                  onClick={() => setActiveModalTab('info')}
+                >
+                  <Laptop size={13} style={{ verticalAlign: -2, marginRight: 4 }} /> Informations & Spécifications
+                </button>
+                <button
+                  type="button"
+                  className={`modal-tab-btn ${activeModalTab === 'history' ? 'active' : ''}`}
+                  onClick={() => setActiveModalTab('history')}
+                >
+                  <History size={13} style={{ verticalAlign: -2, marginRight: 4 }} /> Historique & Timeline
+                </button>
+              </div>
+            )}
+
+            {path === '/assets' && activeModalTab === 'history' ? (
+              loadingAssetDetail ? (
+                <div className="loading-lines"><i /><i /><i /></div>
+              ) : (
+                <div className="timeline-list">
+                  <h4 style={{ margin: '8px 0 4px', fontSize: 12, color: '#334155' }}>Affectations & Utilisateurs</h4>
+                  {Array.isArray(assetDetail?.affectations) && assetDetail.affectations.length > 0 ? (
+                    (assetDetail.affectations as Array<Record<string, unknown>>).map((aff) => (
+                      <div className={`timeline-item ${aff.actif ? 'active' : ''}`} key={String(aff.id)}>
+                        <div className="timeline-item-header">
+                          <span>{String(aff.utilisateur_nom || 'Utilisateur inconnu')} {Boolean(aff.actif) && <span className="status-badge status-green" style={{ marginLeft: 6 }}>Actuel</span>}</span>
+                          <span style={{ fontSize: 10, color: '#64748b' }}>
+                            {aff.date_attribution ? new Date(String(aff.date_attribution)).toLocaleDateString('fr-FR') : '—'} 
+                            {aff.date_retrait ? ` au ${new Date(String(aff.date_retrait)).toLocaleDateString('fr-FR')}` : (aff.actif ? ' (En cours)' : '')}
+                          </span>
+                        </div>
+                        <div className="timeline-item-sub">
+                          <span>📍 {String(aff.site || 'Site non précisé')} · {String(aff.departement || 'Département non précisé')}</span>
+                          {Boolean(aff.motif) && <div style={{ marginTop: 2, fontStyle: 'italic' }}>Motif : {String(aff.motif)}</div>}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>Aucune affectation passée enregistrée.</div>
+                  )}
+
+                  <h4 style={{ margin: '14px 0 4px', fontSize: 12, color: '#334155' }}>Tickets & Incidents</h4>
+                  {Array.isArray(assetDetail?.tickets) && assetDetail.tickets.length > 0 ? (
+                    (assetDetail.tickets as Array<Record<string, unknown>>).map((t) => (
+                      <div className="timeline-item ticket" key={String(t.id)}>
+                        <div className="timeline-item-header">
+                          <span>{t.numero ? `[${String(t.numero)}] ` : ''}{String(t.titre)}</span>
+                          <span className={`status-badge ${statusTone(String(t.statut))}`}>{String(t.statut)}</span>
+                        </div>
+                        <div className="timeline-item-sub">
+                          <span>Type: {String(t.type)} · Priorité: {String(t.priorite)} {t.technicien_nom ? `· Tech: ${String(t.technicien_nom)}` : ''}</span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>Aucun ticket incident enregistré pour ce matériel.</div>
+                  )}
+
+                  <h4 style={{ margin: '14px 0 4px', fontSize: 12, color: '#334155' }}>Maintenances & Réparations</h4>
+                  {Array.isArray(assetDetail?.maintenances) && assetDetail.maintenances.length > 0 ? (
+                    (assetDetail.maintenances as Array<Record<string, unknown>>).map((m) => (
+                      <div className="timeline-item maintenance" key={String(m.id)}>
+                        <div className="timeline-item-header">
+                          <span>{String(m.type)}</span>
+                          <span className={`status-badge ${statusTone(String(m.statut))}`}>{String(m.statut)}</span>
+                        </div>
+                        <div className="timeline-item-sub">
+                          <div>{String(m.description || 'Intervention technique')}</div>
+                          <span style={{ fontSize: 10, color: '#64748b' }}>
+                            Prévue: {m.date_prevue ? new Date(String(m.date_prevue)).toLocaleDateString('fr-FR') : '—'}
+                            {m.cout ? ` · Coût: ${Number(m.cout).toLocaleString('fr-FR')} XOF` : ''}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>Aucune maintenance enregistrée.</div>
+                  )}
+                </div>
+              )
+            ) : (
+              <div className="detail-grid">
+                {Object.entries(selectedRow)
+                  .filter(([k, v]) => typeof v !== 'object' && v !== null && k !== 'deleted_at')
+                  .map(([key, val]) => (
+                    <div className="detail-item" key={key}>
+                      <span>{key.replace(/_/g, ' ')}</span>
+                      <strong>{String(val)}</strong>
+                    </div>
+                  ))}
+              </div>
+            )}
             <div className="dialog-actions" style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
               {path === '/affectations' && Boolean(selectedRow.id) && (
                 <>
@@ -1204,6 +1406,75 @@ function ModulePage({ path }: { path: string }) {
           </div>
         </div>
       )}
+      {restitutionItem && (
+        <div className="dialog-backdrop" onClick={() => setRestitutionItem(null)}>
+          <div className="create-dialog" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+            <div className="dialog-heading">
+              <div>
+                <h2>Restitution de matériel</h2>
+                <p>Clôture de l'affectation et réintégration au stock</p>
+              </div>
+              <button className="icon-button dialog-close" onClick={() => setRestitutionItem(null)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <div style={{ padding: 12, background: '#f8fafc', borderRadius: 8, marginBottom: 14, fontSize: 12, border: '1px solid #e2e8f0' }}>
+                <div style={{ color: '#0f172a' }}>Équipement : <strong>{String(restitutionItem.asset_tag ?? restitutionItem['Nom Machine'] ?? restitutionItem.asset_id)}</strong></div>
+                <div style={{ marginTop: 4, color: '#0f172a' }}>Collaborateur : <strong>{String(restitutionItem.user_nom ?? restitutionItem.nom ?? restitutionItem.user_id)}</strong></div>
+              </div>
+
+              <div className="create-field" style={{ marginBottom: 12 }}>
+                <span>Motif de la restitution :</span>
+                <select
+                  value={restitutionMotif}
+                  onChange={(e) => setRestitutionMotif(e.target.value)}
+                >
+                  <option value="Départ collaborateur / Fin de mission">Départ collaborateur / Fin de mission</option>
+                  <option value="Changement de poste / Renouvellement">Changement de poste / Renouvellement</option>
+                  <option value="Panne matérielle / Réparation">Panne matérielle / Réparation</option>
+                  <option value="Fin de stage / Fin de contrat">Fin de stage / Fin de contrat</option>
+                  <option value="Autre motif">Autre motif</option>
+                </select>
+              </div>
+
+              <div className="create-field" style={{ marginBottom: 16 }}>
+                <span>Statut de l'équipement après restitution :</span>
+                <select
+                  value={restitutionStatut}
+                  onChange={(e) => setRestitutionStatut(e.target.value)}
+                >
+                  <option value="en_stock">En stock (disponible pour réaffectation)</option>
+                  <option value="en_maintenance">En maintenance (nécessite réparation)</option>
+                  <option value="hors_service">Hors service</option>
+                  <option value="reforme">Réformé / Mis au rebut</option>
+                </select>
+              </div>
+
+              <div className="dialog-actions" style={{ gap: 10 }}>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() => setRestitutionItem(null)}
+                  disabled={isSubmittingRestitution}
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  className="button button-primary"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  onClick={() => void handleConfirmRestitution()}
+                  disabled={isSubmittingRestitution}
+                >
+                  <RotateCcw size={15} />
+                  {isSubmittingRestitution ? 'Enregistrement…' : 'Confirmer & Générer PV PDF'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {createOpen && definition.createFields && (
         <CreateItemDialog
           definition={definition}
@@ -1235,6 +1506,14 @@ function ModulePage({ path }: { path: string }) {
         <div><span className="eyebrow">GESTION DU PARC</span><h1>{details.title}</h1><p>{details.subtitle}</p></div>
         <div className="heading-actions">
           {canCreate && <button className="button button-primary" onClick={() => setCreateOpen(true)}><Plus size={15} /> Ajouter</button>}
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={handleExportCsv}
+            title="Exporter la liste actuelle en fichier CSV / Excel"
+          >
+            <FileSpreadsheet size={15} /> Exporter CSV
+          </button>
           <button className="button button-secondary" onClick={() => setRefreshKey((current) => current + 1)} disabled={loading}>
             <RefreshCw size={15} /> Actualiser
           </button>
@@ -1362,7 +1641,7 @@ function ModulePage({ path }: { path: string }) {
                       </span>
                     </th>
                   ))}
-                  <th style={{ width: path === '/affectations' ? 280 : (canEdit || canDelete || path === '/assets' ? 220 : 60), textAlign: 'center' }}>Actions</th>
+                  <th style={{ width: path === '/affectations' ? 360 : (canEdit || canDelete || path === '/assets' ? 220 : 60), textAlign: 'center' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1413,8 +1692,23 @@ function ModulePage({ path }: { path: string }) {
                               }}
                             >
                               <Download size={12} />
-                              <span>Restitution</span>
+                              <span>PV Retour</span>
                             </button>
+                            {Boolean(row.actif === 1 || row.actif === true || (!row.date_retrait && row.actif !== 0)) && (
+                              <button
+                                type="button"
+                                className="button button-secondary"
+                                style={{ padding: '2px 8px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4, height: 26, color: '#d97706', borderColor: '#fcd34d' }}
+                                title="Clôturer cette affectation et restituer l'équipement au stock"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRestitutionItem(row);
+                                }}
+                              >
+                                <RotateCcw size={12} />
+                                <span>Restituer</span>
+                              </button>
+                            )}
                           </>
                         )}
                         {path === '/assets' && (

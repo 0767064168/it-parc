@@ -123,6 +123,16 @@ async function getStats() {
       AND date_prevue >= CURDATE()
   `);
 
+  // Tickets ouverts ou urgents
+  let tickets_urgents_count = 0;
+  try {
+    const [tickets_urgents] = await query(`
+      SELECT COUNT(*) as count FROM tickets
+      WHERE statut IN ('nouveau', 'en_cours', 'ouvert') AND (priorite IN ('haute', 'urgente') OR type = 'panne_materielle')
+    `);
+    tickets_urgents_count = tickets_urgents?.count || 0;
+  } catch (_) {}
+
   return {
     totaux,
     par_type,
@@ -136,6 +146,7 @@ async function getStats() {
     licences_expirant_bientot: licences_expirant_90j.count,
     stock_critique: consommables_stock_bas.count,
     maintenances_planifiees: maintenances_a_venir.count,
+    tickets_urgents: tickets_urgents_count,
   };
 }
 
