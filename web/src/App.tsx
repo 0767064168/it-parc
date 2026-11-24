@@ -12,6 +12,7 @@ import {
   ChevronDown,
   CircleAlert,
   CircleHelp,
+  ArrowRight,
   Download,
   FileUp,
   HardDrive,
@@ -39,7 +40,7 @@ import {
   Trash2,
   type LucideIcon,
 } from 'lucide-react';
-import { Link, Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useSearchParams } from 'react-router-dom';
 import { apiDownload, apiRequest } from './api';
 import { useAuth } from './auth';
 
@@ -234,6 +235,13 @@ const modules: Record<string, ModuleDefinition> = {
       { name: 'nom', label: 'Nom du consommable', required: true },
       { name: 'categorie', label: 'Catégorie' },
       { name: 'quantite', label: 'Quantité initiale', type: 'number' },
+      { name: 'seuil_alerte', label: 'Seuil d’alerte', type: 'number' },
+      { name: 'emplacement', label: 'Emplacement' },
+    ],
+    editFields: [
+      { name: 'nom', label: 'Nom du consommable', required: true },
+      { name: 'categorie', label: 'Catégorie' },
+      { name: 'quantite', label: 'Quantité en stock', type: 'number', required: true },
       { name: 'seuil_alerte', label: 'Seuil d’alerte', type: 'number' },
       { name: 'emplacement', label: 'Emplacement' },
     ],
@@ -582,10 +590,10 @@ function DashboardPage() {
 
   const total = stats?.totaux?.total ?? 0;
   const cards = useMemo(() => [
-    { label: 'Équipements recensés', value: total, icon: Laptop, tone: 'blue', note: 'Total du parc' },
-    { label: 'En service', value: stats?.totaux?.en_service ?? 0, icon: Activity, tone: 'green', note: 'Équipements actifs' },
-    { label: 'En maintenance', value: stats?.totaux?.en_maintenance ?? 0, icon: Settings, tone: 'yellow', note: 'Suivi en cours' },
-    { label: 'Alertes de sécurité', value: stats?.non_conformes ?? 0, icon: ShieldCheck, tone: 'orange', note: 'À vérifier' },
+    { label: 'Équipements recensés', value: total, icon: Laptop, tone: 'blue', note: 'Total du parc', to: '/assets' },
+    { label: 'Alertes de sécurité', value: stats?.non_conformes ?? 0, icon: ShieldCheck, tone: 'orange', note: 'À vérifier dans les rapports', to: '/reports' },
+    { label: 'En service', value: stats?.totaux?.en_service ?? 0, icon: Activity, tone: 'green', note: 'Équipements actifs', to: '/assets?statut=en_service' },
+    { label: 'En maintenance', value: stats?.totaux?.en_maintenance ?? 0, icon: Settings, tone: 'yellow', note: 'Suivi en cours', to: '/assets?statut=en_maintenance' },
   ], [stats, total]);
 
   return (
@@ -609,13 +617,14 @@ function DashboardPage() {
       )}
 
       <div className="stats-grid">
-        {cards.map(({ label, value, icon: Icon, tone, note }) => (
-          <article className="stat-card" key={label}>
+        {cards.map(({ label, value, icon: Icon, tone, note, to }) => (
+          <Link className={`stat-card stat-card-link tone-${tone}`} key={label} to={to} aria-label={`${label} : consulter les données`}>
             <div className={`stat-icon ${tone}`}><Icon size={19} /></div>
             <div className="stat-label">{label}</div>
             <div className="stat-value">{loading ? <span className="skeleton-number" /> : value.toLocaleString('fr-FR')}</div>
             <div className="stat-note">{note}</div>
-          </article>
+            <div className="stat-link-hint">Consulter <ArrowRight size={13} /></div>
+          </Link>
         ))}
       </div>
 
@@ -831,6 +840,8 @@ function cellText(value: unknown): string {
 function ModulePage({ path }: { path: string }) {
   const definition = modules[path];
   const { token, user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const statusFilter = path === '/assets' ? searchParams.get('statut') : null;
   const [payload, setPayload] = useState<unknown>(null);
   const [query, setQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
@@ -898,19 +909,14 @@ function ModulePage({ path }: { path: string }) {
       ? role === 'admin'
       : path === '/tickets' || role === 'admin' || role === 'technicien'),
   );
+  const targetModules = ['/affectations', '/assets', '/consommables', '/licences'];
   const canEdit = Boolean(
     definition.editFields &&
-    (path === '/affectations'
-      ? role === 'admin' || role === 'technicien'
-      : path === '/assets'
-        ? role === 'admin' || role === 'technicien'
-        : path === '/licences' && role === 'admin'),
+    (targetModules.includes(path) || role === 'admin' || role === 'technicien'),
   );
   const canDelete = Boolean(
     definition.editFields &&
-    (definition.adminOnlyDelete
-      ? role === 'admin'
-      : path === '/affectations' && (role === 'admin' || role === 'technicien')),
+    (targetModules.includes(path) || role === 'admin' || role === 'technicien'),
   );
 
   async function deleteRow(row: Record<string, unknown>) {
@@ -919,17 +925,16 @@ function ModulePage({ path }: { path: string }) {
       setError('Impossible de supprimer cet élément : identifiant invalide.');
       return;
     }
-    const label = String(row.asset_tag ?? row.nom ?? row.titre ?? `#${id}`);
-    const action = path === '/assets' ? 'archiver' : 'supprimer';
-    if (!window.confirm(`Voulez-vous vraiment ${action} « ${label} » ?`)) return;
+    const label = String(row.asset_tag ?? row['Nom Machine'] ?? row.nom ?? row.titre ?? `#${id}`);
+    if (!window.confirm(`Voulez-vous vraiment supprimer « ${label} » ?`)) return;
 
     try {
       await apiRequest<unknown>(`${definition.endpoint}/${id}`, {
         method: 'DELETE',
         token,
-        ...(path === '/assets' ? { body: { motif: 'Archivé depuis l’inventaire' } } : {}),
+        ...(path === '/assets' ? { body: { motif: 'Supprimé depuis l’inventaire' } } : {}),
       });
-      setSuccessMessage(path === '/assets' ? 'Équipement archivé.' : 'Enregistrement supprimé.');
+      setSuccessMessage('Enregistrement supprimé avec succès.');
       setRefreshKey((current) => current + 1);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'La suppression a échoué.');
@@ -944,6 +949,7 @@ function ModulePage({ path }: { path: string }) {
       token,
       query: {
         ...(definition.paginated ? { page, limit: 20 } : {}),
+        ...(statusFilter ? { statut: statusFilter } : {}),
         ...(definition.canSearch && submittedQuery ? { search: submittedQuery } : {}),
       },
     }).then((result) => {
@@ -954,7 +960,7 @@ function ModulePage({ path }: { path: string }) {
       if (active) setLoading(false);
     });
     return () => { active = false; };
-  }, [definition, page, refreshKey, submittedQuery, token]);
+  }, [definition, page, refreshKey, statusFilter, submittedQuery, token]);
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1001,6 +1007,34 @@ function ModulePage({ path }: { path: string }) {
                   {downloadingPdfId === Number(selectedRow.id) ? 'Génération en cours…' : 'Télécharger Fiche d’Attribution (PDF)'}
                 </button>
               )}
+              {canEdit && selectedRow && (
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  onClick={() => {
+                    const rowToEdit = selectedRow;
+                    setSelectedRow(null);
+                    setEditingRow(rowToEdit);
+                  }}
+                >
+                  <Pencil size={15} /> Modifier
+                </button>
+              )}
+              {canDelete && selectedRow && (
+                <button
+                  type="button"
+                  className="button button-danger"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  onClick={() => {
+                    const rowToDelete = selectedRow;
+                    setSelectedRow(null);
+                    void deleteRow(rowToDelete);
+                  }}
+                >
+                  <Trash2 size={15} /> Supprimer
+                </button>
+              )}
               <button className="button button-secondary" onClick={() => setSelectedRow(null)}>
                 Fermer
               </button>
@@ -1045,6 +1079,12 @@ function ModulePage({ path }: { path: string }) {
         </div>
       </div>
       <section className="panel data-panel">
+        {statusFilter && (
+          <div className="active-filter">
+            <span>Filtre : <strong>{statusFilter.replace(/_/g, ' ')}</strong></span>
+            <Link to="/assets">Effacer le filtre</Link>
+          </div>
+        )}
         <div className="module-toolbar">
           <div className="module-count">{loading ? 'Chargement…' : `${rows.length} résultat${rows.length > 1 ? 's' : ''}`}</div>
           {definition.canSearch && (
@@ -1132,14 +1172,14 @@ function ModulePage({ path }: { path: string }) {
                           <button
                             type="button"
                             className="button button-danger row-action-button"
-                            title={path === '/assets' ? 'Archiver' : 'Supprimer'}
-                            aria-label={`${path === '/assets' ? 'Archiver' : 'Supprimer'} ${String(row.asset_tag ?? row.nom ?? row.id)}`}
+                            title="Supprimer"
+                            aria-label={`Supprimer ${String(row.asset_tag ?? row.nom ?? row.id)}`}
                             onClick={(event) => {
                               event.stopPropagation();
                               void deleteRow(row);
                             }}
                           >
-                            <Trash2 size={13} /><span>{path === '/assets' ? 'Archiver' : 'Supprimer'}</span>
+                            <Trash2 size={13} /><span>Supprimer</span>
                           </button>
                         )}
                         <span style={{ color: '#4d65e2', display: 'inline-flex', alignItems: 'center' }} title="Détails">
@@ -1410,10 +1450,10 @@ function ReportsPage() {
     .filter((item) => String(item.statut ?? '').toLowerCase() === status)
     .reduce((sum, item) => sum + Number(item.count || 0), 0);
   const reportCards = [
-    { label: 'Équipements recensés', value: typeData.reduce((sum, item) => sum + Number(item.count || 0), 0), icon: Laptop, tone: 'blue', note: 'Total de l’inventaire' },
-    { label: 'En service', value: statusCount('en_service'), icon: Activity, tone: 'green', note: 'Équipements opérationnels' },
-    { label: 'En maintenance', value: statusCount('en_maintenance'), icon: Settings, tone: 'yellow', note: 'À suivre' },
-    { label: 'Stocks critiques', value: consommablesData.filter((item) => Number(item.quantite || 0) <= Number(item.seuil_alerte || 0)).length, icon: CircleAlert, tone: 'orange', note: 'Consommables à réapprovisionner' },
+    { label: 'Équipements recensés', value: typeData.reduce((sum, item) => sum + Number(item.count || 0), 0), icon: Laptop, tone: 'blue', note: 'Total de l’inventaire', to: '/assets' },
+    { label: 'Stocks critiques', value: consommablesData.filter((item) => Number(item.quantite || 0) <= Number(item.seuil_alerte || 0)).length, icon: CircleAlert, tone: 'orange', note: 'Consommables à réapprovisionner', to: '/consommables' },
+    { label: 'En service', value: statusCount('en_service'), icon: Activity, tone: 'green', note: 'Équipements opérationnels', to: '/assets?statut=en_service' },
+    { label: 'En maintenance', value: statusCount('en_maintenance'), icon: Settings, tone: 'yellow', note: 'À suivre', to: '/assets?statut=en_maintenance' },
   ];
 
   return (
@@ -1433,13 +1473,14 @@ function ReportsPage() {
       ) : (
         <>
         <div className="stats-grid report-kpi-grid">
-          {reportCards.map(({ label, value, icon: Icon, tone, note }) => (
-            <article className="stat-card" key={label}>
+          {reportCards.map(({ label, value, icon: Icon, tone, note, to }) => (
+            <Link className={`stat-card stat-card-link tone-${tone}`} key={label} to={to} aria-label={`${label} : consulter les données`}>
               <div className={`stat-icon ${tone}`}><Icon size={19} /></div>
               <div className="stat-label">{label}</div>
               <div className="stat-value">{value.toLocaleString('fr-FR')}</div>
               <div className="stat-note">{note}</div>
-            </article>
+              <div className="stat-link-hint">Consulter <ArrowRight size={13} /></div>
+            </Link>
           ))}
         </div>
         <div className="dashboard-columns">

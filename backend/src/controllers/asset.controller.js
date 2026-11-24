@@ -69,10 +69,11 @@ async function update(req, res) {
     const existing = await AssetModel.findById(id);
     if (!existing) return error(res, 'Asset introuvable', 404);
 
-    await AssetModel.update(id, req.body);
+    const payload = req.body.asset ? req.body : { asset: req.body };
+    await AssetModel.update(id, payload);
     await query(
       'INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)',
-      [req.user.id, 'UPDATE', 'asset', id, JSON.stringify(req.body.asset)]
+      [req.user.id, 'UPDATE', 'asset', id, JSON.stringify(payload.asset || payload)]
     );
     const updated = await AssetModel.findById(id);
     return success(res, updated, 'Asset mis à jour');
