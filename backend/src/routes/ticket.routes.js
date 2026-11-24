@@ -68,18 +68,19 @@ router.get('/:id', [
 router.post('/', [
   body('titre').notEmpty().trim().withMessage('Le titre est obligatoire (max 200 caract.)').isLength({ max: 200 }),
   body('description').notEmpty().trim().withMessage('La description est obligatoire'),
-  body('type').isIn(['incident', 'demande_materiel', 'maintenance', 'acces_logiciel']).withMessage('Type invalide'),
+  body('type').isIn(['incident', 'demande', 'demande_materiel', 'maintenance', 'assistance', 'panne_materielle', 'acces_logiciel']).withMessage('Type invalide'),
   body('priorite').isIn(['critique', 'haute', 'moyenne', 'basse']).withMessage('Priorité suggérée invalide'),
   body('asset_id').optional({ nullable: true }).isInt().withMessage("ID d'asset invalide"),
 ], validate, ctrl.create);
 
 router.put('/:id', [
-  requireRole('admin'),
+  requireRole('admin', 'technicien'),
   param('id').isInt().withMessage('ID de ticket invalide'),
   body('titre').optional().notEmpty().trim().isLength({ max: 200 }),
   body('description').optional().notEmpty().trim(),
-  body('type').optional().isIn(['incident', 'demande_materiel', 'maintenance', 'acces_logiciel']),
+  body('type').optional().isIn(['incident', 'demande', 'demande_materiel', 'maintenance', 'assistance', 'panne_materielle', 'acces_logiciel']),
   body('priorite').optional().isIn(['critique', 'haute', 'moyenne', 'basse']),
+  body('statut').optional().isIn(['ouvert', 'en_cours', 'en_attente', 'resolu', 'ferme', 'annule', 'rouvert']),
 ], validate, ctrl.update);
 
 // ── Cycle de Vie & Actions ───────────────────────────────────────────────────

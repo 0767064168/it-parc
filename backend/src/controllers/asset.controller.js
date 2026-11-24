@@ -5,6 +5,12 @@
 
 const fs = require('fs');
 const path = require('path');
+let QRCode;
+try {
+  QRCode = require('qrcode');
+} catch (e) {
+  // lazy loaded
+}
 const AssetModel = require('../models/asset.model');
 const { query } = require('../config/db');
 const { success, error, paginated } = require('../utils/response');
@@ -195,6 +201,69 @@ async function deleteAttachment(req, res) {
   }
 }
 
+async function getQrCode(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    const asset = await AssetModel.findById(id);
+    if (!asset) return error(res, 'Équipement introuvable', 404);
+
+    if (!QRCode) {
+      try { QRCode = require('qrcode'); } catch (_) {}
+    }
+    if (!QRCode) {
+      return error(res, 'Module QR Code non disponible', 500);
+    }
+
+    const assetTag = asset['Nom Machine'] || asset.asset_tag || `ASSET-${asset.id}`;
+    const qrData = JSON.stringify({
+      id: asset.id,
+      tag: assetTag,
+      sn: asset.serial_number || '',
+      type: asset.type,
+      site: asset.site || ''
+    });
+
+    if (req.query.format === 'image' || req.query.download === 'true') {
+      const buffer = await QRCode.toBuffer(qrData, {
+        errorCorrectionLevel: 'M',
+        margin: 2,
+        width: 320,
+      });
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Content-Disposition', `attachment; filename="QR_${assetTag}.png"`);
+      return res.send(buffer);
+    }
+
+    const dataUrl = await QRCode.toDataURL(qrData, {
+      errorCorrectionLevel: 'M',
+      margin: 2,
+      width: 250,
+      color: {
+        dark: '#0f172a',
+        light: '#ffffff'
+      }
+    });
+
+    return success(res, {
+      dataUrl,
+      asset: {
+        id: asset.id,
+        asset_tag: assetTag,
+        serial_number: asset.serial_number,
+        marque: asset.marque,
+        modele: asset.modele,
+        type: asset.type,
+        site: asset.site,
+        departement: asset.departement,
+        statut: asset.statut
+      }
+    });
+  } catch (err) {
+    logger.error('Erreur getQrCode asset:', err);
+    return error(res, 'Erreur lors de la génération du QR Code', 500);
+  }
+}
+
 module.exports = {
   list,
   getOne,
@@ -206,5 +275,6 @@ module.exports = {
   listAttachments,
   uploadAttachment,
   downloadAttachment,
-  deleteAttachment
+  deleteAttachment,
+  getQrCode
 };

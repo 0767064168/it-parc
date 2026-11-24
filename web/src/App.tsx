@@ -38,6 +38,8 @@ import {
   PieChart,
   Pencil,
   Trash2,
+  QrCode,
+  Printer,
   type LucideIcon,
 } from 'lucide-react';
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useSearchParams } from 'react-router-dom';
@@ -195,6 +197,13 @@ const modules: Record<string, ModuleDefinition> = {
       { name: 'asset_id', label: 'Identifiant équipement concerné (optionnel)', type: 'number' },
       { name: 'description', label: 'Description détaillée', type: 'textarea', required: true, placeholder: 'Décrivez précisément le problème ou le besoin…' },
     ],
+    editFields: [
+      { name: 'titre', label: 'Sujet du ticket', required: true },
+      { name: 'statut', label: 'État d’avancement', type: 'select', options: ['ouvert', 'en_cours', 'en_attente', 'resolu', 'ferme', 'annule'] },
+      { name: 'priorite', label: 'Niveau de priorité', type: 'select', options: ['critique', 'haute', 'moyenne', 'basse'] },
+      { name: 'type', label: 'Type de ticket', type: 'select', options: ['incident', 'demande', 'assistance', 'panne_materielle', 'maintenance'] },
+      { name: 'description', label: 'Description', type: 'textarea', required: true },
+    ],
   },
   '/licences': {
     title: 'Licences', subtitle: 'Logiciels et abonnements', endpoint: '/licences', canSearch: true,
@@ -259,6 +268,13 @@ const modules: Record<string, ModuleDefinition> = {
       { name: 'description', label: 'Description', type: 'textarea', required: true },
       { name: 'type', label: 'Type' },
       { name: 'technicien_id', label: 'Identifiant technicien', type: 'number' },
+      { name: 'cout', label: 'Coût', type: 'number' },
+    ],
+    editFields: [
+      { name: 'date_prevue', label: 'Date prévue', type: 'date', required: true },
+      { name: 'statut', label: 'État de la maintenance', type: 'select', options: ['planifiee', 'en_cours', 'terminee', 'annulee'] },
+      { name: 'type', label: 'Type d’intervention', type: 'select', options: ['preventive', 'corrective', 'evolutive'] },
+      { name: 'description', label: 'Description des travaux', type: 'textarea', required: true },
       { name: 'cout', label: 'Coût', type: 'number' },
     ],
   },
@@ -877,6 +893,16 @@ function ModulePage({ path }: { path: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [downloadingPdfId, setDownloadingPdfId] = useState<number | null>(null);
+  const [qrModalAsset, setQrModalAsset] = useState<{ id: number; tag: string; dataUrl: string; asset: Record<string, unknown> } | null>(null);
+
+  async function handleShowQr(assetId: number, tag?: string) {
+    try {
+      const res = await apiRequest<{ dataUrl: string; asset: Record<string, unknown> }>(`/assets/${assetId}/qr`, { token });
+      setQrModalAsset({ id: assetId, tag: tag || String(assetId), dataUrl: res.dataUrl, asset: res.asset });
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Erreur chargement QR Code');
+    }
+  }
 
   async function handleDownloadPdf(affectationId: number, tag?: string) {
     try {
@@ -1007,6 +1033,18 @@ function ModulePage({ path }: { path: string }) {
                   {downloadingPdfId === Number(selectedRow.id) ? 'Génération en cours…' : 'Télécharger Fiche d’Attribution (PDF)'}
                 </button>
               )}
+              {path === '/assets' && Boolean(selectedRow.id) && (
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                  onClick={() => {
+                    void handleShowQr(Number(selectedRow.id), String(selectedRow.asset_tag ?? selectedRow['Nom Machine'] ?? selectedRow.id));
+                  }}
+                >
+                  <QrCode size={15} /> Étiquette QR Code
+                </button>
+              )}
               {canEdit && selectedRow && (
                 <button
                   type="button"
@@ -1036,6 +1074,70 @@ function ModulePage({ path }: { path: string }) {
                 </button>
               )}
               <button className="button button-secondary" onClick={() => setSelectedRow(null)}>
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {qrModalAsset && (
+        <div className="dialog-backdrop" onClick={() => setQrModalAsset(null)}>
+          <div className="detail-modal" style={{ maxWidth: 440, textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+            <div className="dialog-heading">
+              <div>
+                <h2>Étiquette d’Inventaire IT</h2>
+                <p>Marquage et identification rapide de l’équipement</p>
+              </div>
+              <button className="icon-button dialog-close" onClick={() => setQrModalAsset(null)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ background: '#fff', border: '2px dashed #94a3b8', borderRadius: 12, padding: 20, margin: '16px 0', color: '#0f172a' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: '#475569', textTransform: 'uppercase', marginBottom: 10 }}>
+                DIRECTION IT · GESTION DU PARC
+              </div>
+              <img
+                src={qrModalAsset.dataUrl}
+                alt={`QR Code ${qrModalAsset.tag}`}
+                style={{ width: 175, height: 175, display: 'block', margin: '0 auto', borderRadius: 6 }}
+              />
+              <div style={{ marginTop: 12, fontSize: 16, fontWeight: 800, color: '#0f172a' }}>
+                {qrModalAsset.tag}
+              </div>
+              <div style={{ fontSize: 12, color: '#475569', marginTop: 3 }}>
+                {[qrModalAsset.asset.marque, qrModalAsset.asset.modele].filter(Boolean).join(' ') || String(qrModalAsset.asset.type ?? '').toUpperCase()}
+              </div>
+              {Boolean(qrModalAsset.asset.serial_number) && (
+                <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
+                  S/N : <strong>{String(qrModalAsset.asset.serial_number)}</strong>
+                </div>
+              )}
+              {Boolean(qrModalAsset.asset.site) && (
+                <div style={{ fontSize: 11, color: '#0284c7', fontWeight: 600, marginTop: 4 }}>
+                  📍 Site : {String(qrModalAsset.asset.site)}
+                </div>
+              )}
+            </div>
+
+            <div className="dialog-actions" style={{ justifyContent: 'center', gap: 10 }}>
+              <button
+                type="button"
+                className="button button-primary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                onClick={() => window.print()}
+              >
+                <Printer size={15} /> Imprimer l'étiquette
+              </button>
+              <a
+                className="button button-secondary"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}
+                href={qrModalAsset.dataUrl}
+                download={`QR_${qrModalAsset.tag}.png`}
+              >
+                <Download size={15} /> Télécharger PNG
+              </a>
+              <button className="button button-secondary" onClick={() => setQrModalAsset(null)}>
                 Fermer
               </button>
             </div>
@@ -1115,7 +1217,7 @@ function ModulePage({ path }: { path: string }) {
                       </span>
                     </th>
                   ))}
-                  <th style={{ width: canEdit || canDelete || path === '/affectations' ? 180 : 45, textAlign: 'center' }}>Actions</th>
+                  <th style={{ width: canEdit || canDelete || path === '/affectations' || path === '/assets' ? 220 : 50, textAlign: 'center' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1152,6 +1254,21 @@ function ModulePage({ path }: { path: string }) {
                           >
                             <Download size={12} />
                             {downloadingPdfId === Number(row.id) ? '...' : 'PDF'}
+                          </button>
+                        )}
+                        {path === '/assets' && (
+                          <button
+                            type="button"
+                            className="button button-secondary"
+                            style={{ padding: '2px 8px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4, height: 26 }}
+                            title="Générer l'étiquette QR Code"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleShowQr(Number(row.id), String(row.asset_tag ?? row['Nom Machine'] ?? row.id));
+                            }}
+                          >
+                            <QrCode size={12} />
+                            <span>QR</span>
                           </button>
                         )}
                         {canEdit && (

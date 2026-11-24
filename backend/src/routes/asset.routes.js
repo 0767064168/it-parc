@@ -56,6 +56,10 @@ router.get('/:id', requirePermission('assets:read'), [
   param('id').isInt().withMessage('ID invalide')
 ], validate, ctrl.getOne);
 
+router.get('/:id/qr', requirePermission('assets:read'), [
+  param('id').isInt().withMessage('ID invalide')
+], validate, ctrl.getQrCode);
+
 router.post('/',
   requirePermission('assets:create'),
   [
