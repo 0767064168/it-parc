@@ -1082,6 +1082,25 @@ function ModulePage({ path }: { path: string }) {
     }
   }
 
+  async function handleDownloadAssetPdf(assetId: number, tag?: string) {
+    try {
+      setDownloadingPdfId(assetId);
+      const blob = await apiDownload(`/assets/${assetId}/pdf`, { token });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Fiche_Technique_${tag || assetId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur lors du téléchargement de la fiche technique');
+    } finally {
+      setDownloadingPdfId(null);
+    }
+  }
+
   const details = pageTitles[path];
   const totalCount = asRecord(payload)?.total;
   const canNextPage = definition.paginated && (
@@ -1296,16 +1315,30 @@ function ModulePage({ path }: { path: string }) {
                 </>
               )}
               {path === '/assets' && Boolean(selectedRow.id) && (
-                <button
-                  type="button"
-                  className="button button-secondary"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                  onClick={() => {
-                    void handleShowQr(Number(selectedRow.id), String(selectedRow.asset_tag ?? selectedRow['Nom Machine'] ?? selectedRow.id));
-                  }}
-                >
-                  <QrCode size={15} /> Étiquette QR Code
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="button button-primary"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    disabled={downloadingPdfId === Number(selectedRow.id)}
+                    onClick={() => {
+                      void handleDownloadAssetPdf(Number(selectedRow.id), String(selectedRow.asset_tag ?? selectedRow['Nom Machine'] ?? selectedRow.id));
+                    }}
+                  >
+                    <Download size={15} />
+                    {downloadingPdfId === Number(selectedRow.id) ? 'Génération en cours…' : 'Fiche Technique (PDF)'}
+                  </button>
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    onClick={() => {
+                      void handleShowQr(Number(selectedRow.id), String(selectedRow.asset_tag ?? selectedRow['Nom Machine'] ?? selectedRow.id));
+                    }}
+                  >
+                    <QrCode size={15} /> Étiquette QR Code
+                  </button>
+                </>
               )}
               {canEdit && selectedRow && (
                 <button
@@ -1712,19 +1745,35 @@ function ModulePage({ path }: { path: string }) {
                           </>
                         )}
                         {path === '/assets' && (
-                          <button
-                            type="button"
-                            className="button button-secondary"
-                            style={{ padding: '2px 8px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4, height: 26 }}
-                            title="Générer l'étiquette QR Code"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void handleShowQr(Number(row.id), String(row.asset_tag ?? row['Nom Machine'] ?? row.id));
-                            }}
-                          >
-                            <QrCode size={12} />
-                            <span>QR</span>
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              className="button button-secondary"
+                              style={{ padding: '2px 8px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4, height: 26 }}
+                              title="Télécharger la fiche technique officielle (PDF)"
+                              disabled={downloadingPdfId === Number(row.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleDownloadAssetPdf(Number(row.id), String(row.asset_tag ?? row['Nom Machine'] ?? row.id));
+                              }}
+                            >
+                              <Download size={12} />
+                              <span>{downloadingPdfId === Number(row.id) ? '...' : 'PDF'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="button button-secondary"
+                              style={{ padding: '2px 8px', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4, height: 26 }}
+                              title="Générer l'étiquette QR Code"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleShowQr(Number(row.id), String(row.asset_tag ?? row['Nom Machine'] ?? row.id));
+                              }}
+                            >
+                              <QrCode size={12} />
+                              <span>QR</span>
+                            </button>
+                          </>
                         )}
                         {canEdit && (
                           <button
@@ -1949,8 +1998,11 @@ function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const categories = [
-    ['assets', 'Équipements'], ['tickets', 'Tickets'], ['maintenances', 'Maintenances'],
-    ['licences', 'Licences'], ['wiki', 'Base de connaissances'],
+    ['assets', 'Équipements', '/assets', Laptop],
+    ['tickets', 'Tickets & Pannes', '/tickets', Ticket],
+    ['maintenances', 'Maintenances', '/maintenances', Settings],
+    ['licences', 'Licences', '/licences', ShieldCheck],
+    ['wiki', 'Base de connaissances', '/wiki', BookOpen],
   ] as const;
 
   async function search(event: FormEvent<HTMLFormElement>) {
@@ -1972,25 +2024,83 @@ function SearchPage() {
 
   return (
     <div>
-      <div className="page-heading"><div><span className="eyebrow">GESTION DU PARC</span><h1>Recherche globale</h1><p>Retrouvez un équipement, un ticket ou une procédure.</p></div></div>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">GESTION DU PARC</span>
+          <h1>Recherche globale</h1>
+          <p>Retrouvez un équipement, un ticket, une licence ou une procédure technique.</p>
+        </div>
+      </div>
       <section className="panel search-panel">
         <form className="global-search" onSubmit={search}>
-          <Search size={19} /><input placeholder="Ex. numéro de série, nom, ticket…" value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Recherche globale" />
-          <button className="button button-primary" disabled={loading}>{loading ? 'Recherche…' : 'Rechercher'}</button>
+          <Search size={19} />
+          <input
+            placeholder="Ex. numéro de série, nom machine, ticket, utilisateur…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            aria-label="Recherche globale"
+          />
+          <button className="button button-primary" disabled={loading}>
+            {loading ? 'Recherche…' : 'Rechercher'}
+          </button>
         </form>
         {error && <div className="alert alert-error" role="alert"><div><strong>Recherche impossible</strong><span>{error}</span></div></div>}
         {loading && <div className="loading-lines"><i /><i /></div>}
-        {results && !loading && <div className="search-results">
-          {categories.map(([key, title]) => {
-            const rows = extractRows(results[key]);
-            return (
-              <section className="search-category" key={key}>
-                <h2>{title}<span>{rows.length}</span></h2>
-                {rows.length ? rows.map((row, index) => <article key={String(row.id ?? index)}><strong>{cellText(row.asset_tag ?? row.numero ?? row.titre ?? row.nom ?? row.nom_machine)}</strong><span>{cellText(row.type ?? row.statut ?? row.description ?? row.categorie)}</span></article>) : <p>Aucun résultat.</p>}
-              </section>
-            );
-          })}
-        </div>}
+        {results && !loading && (
+          <div className="search-results">
+            {categories.map(([key, title, targetPath, Icon]) => {
+              const rows = extractRows(results[key]);
+              return (
+                <section className="search-category" key={key}>
+                  <h2>
+                    <Icon size={14} style={{ marginRight: 4, color: '#2563eb' }} />
+                    {title}
+                    <span>{rows.length}</span>
+                  </h2>
+                  {rows.length ? (
+                    rows.map((row, index) => {
+                      const mainText = cellText(row.asset_tag ?? row.numero ?? row.titre ?? row.nom ?? row.nom_machine);
+                      const subText = cellText(row.type ?? row.statut ?? row.description ?? row.categorie);
+                      return (
+                        <Link
+                          to={`${targetPath}?search=${encodeURIComponent(mainText)}`}
+                          key={String(row.id ?? index)}
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '8px 10px',
+                            borderRadius: 6,
+                            background: '#f8fafc',
+                            textDecoration: 'none',
+                            marginBottom: 6,
+                            transition: 'all 0.15s ease',
+                            border: '1px solid #e2e8f0',
+                          }}
+                        >
+                          <div style={{ minWidth: 0, overflow: 'hidden' }}>
+                            <strong style={{ display: 'block', fontSize: 11, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {mainText}
+                            </strong>
+                            <span style={{ fontSize: 10, color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {subText}
+                            </span>
+                          </div>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#2563eb', fontWeight: 600, flexShrink: 0, marginLeft: 8 }}>
+                            <span>Consulter</span>
+                            <ArrowRight size={12} />
+                          </div>
+                        </Link>
+                      );
+                    })
+                  ) : (
+                    <p style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic', margin: '8px 0' }}>Aucun résultat dans cette catégorie.</p>
+                  )}
+                </section>
+              );
+            })}
+          </div>
+        )}
       </section>
     </div>
   );
@@ -2015,6 +2125,9 @@ function ReportsPage() {
   const statutData = extractRows(report?.assets_by_statut);
   const licencesData = extractRows(report?.licences_utilisation);
   const consommablesData = extractRows(report?.consommables_stock);
+  const maintenanceData = extractRows(report?.maintenances_costs);
+  const totalMaintenanceCost = maintenanceData.reduce((sum, item) => sum + Number(item.total_cout || 0), 0);
+  const maxMaintCost = Math.max(...maintenanceData.map((d) => Number(d.total_cout || 0)), 1);
 
   const maxType = Math.max(...typeData.map((d) => Number(d.count || 0)), 1);
   const maxStatut = Math.max(...statutData.map((d) => Number(d.count || 0)), 1);
@@ -2035,6 +2148,16 @@ function ReportsPage() {
           <span className="eyebrow">ANALYSE DU PARC</span>
           <h1>Rapports & Indicateurs Clés</h1>
           <p>Indicateurs décisionnels et suivi de conformité du parc informatique.</p>
+        </div>
+        <div className="heading-actions">
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={() => window.print()}
+            title="Imprimer ou exporter en PDF ce rapport d'audit"
+          >
+            <Printer size={15} /> Imprimer le Rapport
+          </button>
         </div>
       </div>
 
@@ -2206,6 +2329,59 @@ function ReportsPage() {
                 </tbody>
               </table>
             </div>
+          </section>
+
+          {/* Suivi Budgétaire des Maintenances */}
+          <section className="panel" style={{ gridColumn: '1 / -1' }}>
+            <div className="panel-heading">
+              <div>
+                <h2>Suivi Budgétaire des Maintenances & Réparations</h2>
+                <p>Dépenses cumulées d'intervention technique par mois</p>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ fontSize: 10, color: '#64748b', display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Budget Global Investi</span>
+                <strong style={{ fontSize: 16, color: '#2563eb' }}>{totalMaintenanceCost.toLocaleString('fr-FR')} XOF</strong>
+              </div>
+            </div>
+            {maintenanceData.length > 0 ? (
+              <div className="table-scroll" style={{ marginTop: 16 }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Période (Mois)</th>
+                      <th>Nombre d'interventions</th>
+                      <th>Coût Total (XOF)</th>
+                      <th>Intensité Budgétaire</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {maintenanceData.map((m, idx) => {
+                      const cost = Number(m.total_cout || 0);
+                      const pct = Math.round((cost / maxMaintCost) * 100);
+                      return (
+                        <tr key={idx}>
+                          <td><strong>{String(m.mois)}</strong></td>
+                          <td>{Number(m.count || 0)} intervention{Number(m.count || 0) > 1 ? 's' : ''}</td>
+                          <td><strong style={{ color: '#0f172a' }}>{cost.toLocaleString('fr-FR')} XOF</strong></td>
+                          <td style={{ minWidth: 140 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div className="bar-track" style={{ flex: 1 }}>
+                                <span style={{ width: `${pct}%`, background: '#8b5cf6' }} />
+                              </div>
+                              <span style={{ fontSize: 10, fontWeight: 700 }}>{pct}%</span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div style={{ padding: '24px 0', textAlign: 'center', color: '#94a3b8', fontSize: 11, fontStyle: 'italic' }}>
+                Aucune intervention de maintenance clôturée avec coût sur la période.
+              </div>
+            )}
           </section>
         </div>
         </>

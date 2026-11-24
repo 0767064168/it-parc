@@ -11,6 +11,12 @@ try {
 } catch (e) {
   // lazy loaded
 }
+let PDFDocument;
+try {
+  PDFDocument = require('pdfkit');
+} catch (e) {
+  // lazy loaded
+}
 const AssetModel = require('../models/asset.model');
 const { query } = require('../config/db');
 const { success, error, paginated } = require('../utils/response');
@@ -264,6 +270,129 @@ async function getQrCode(req, res) {
   }
 }
 
+async function generatePdf(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    if (!id || isNaN(id)) return error(res, 'ID d\'équipement invalide', 400);
+
+    if (!PDFDocument) {
+      PDFDocument = require('pdfkit');
+    }
+    if (!PDFDocument) {
+      return error(res, 'Générateur PDF non disponible', 500);
+    }
+
+    const asset = await AssetModel.findById(id);
+    if (!asset) return error(res, 'Équipement introuvable', 404);
+
+    const assetTag = asset.asset_tag || asset['Nom Machine'] || `ASSET-${id}`;
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 40,
+      info: {
+        Title: `Fiche Technique - ${assetTag}`,
+        Author: 'Direction IT Bouaké',
+        Subject: 'Fiche d\'inventaire et d\'identification de matériel informatique'
+      }
+    });
+
+    const filename = `Fiche_Technique_${assetTag}.pdf`;
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/pdf');
+    doc.pipe(res);
+
+    // En-tête bandeau
+    doc.rect(40, 40, 515, 68).fill('#0f172a');
+    doc.fillColor('#38bdf8').fontSize(9).font('Helvetica-Bold')
+       .text('DIRECTION DES SYSTÈMES D\'INFORMATION & DU PARC IT', 55, 52);
+    doc.fillColor('#ffffff').fontSize(13).font('Helvetica-Bold')
+       .text('FICHE TECHNIQUE & D\'INVENTAIRE MATÉRIEL', 55, 67);
+    doc.fillColor('#94a3b8').fontSize(8).font('Helvetica')
+       .text('Direction IT Bouaké • Dossier technique officiel du parc informatique', 55, 87);
+
+    doc.fillColor('#38bdf8').fontSize(11).font('Helvetica-Bold')
+       .text(assetTag, 420, 56, { align: 'right', width: 120 });
+    doc.fillColor('#cbd5e1').fontSize(8).font('Helvetica')
+       .text(`Édition : ${new Date().toLocaleDateString('fr-FR')}`, 420, 72, { align: 'right', width: 120 })
+       .text(`Statut : ${(asset.statut || 'EN SERVICE').toUpperCase()}`, 420, 84, { align: 'right', width: 120 });
+
+    let currentY = 120;
+
+    const drawSectionHeader = (title, y) => {
+      doc.rect(40, y, 515, 18).fill('#f1f5f9');
+      doc.fillColor('#1e293b').fontSize(8.5).font('Helvetica-Bold')
+         .text(title.toUpperCase(), 48, y + 5);
+      return y + 24;
+    };
+
+    const drawRow = (label1, val1, label2, val2, y) => {
+      doc.fillColor('#64748b').fontSize(7.5).font('Helvetica').text(label1, 48, y, { width: 120 });
+      doc.fillColor('#0f172a').fontSize(8).font('Helvetica-Bold').text(String(val1 || '—'), 160, y, { width: 120 });
+      if (label2) {
+        doc.fillColor('#64748b').fontSize(7.5).font('Helvetica').text(label2, 295, y, { width: 120 });
+        doc.fillColor('#0f172a').fontSize(8).font('Helvetica-Bold').text(String(val2 || '—'), 415, y, { width: 135 });
+      }
+      return y + 14;
+    };
+
+    // 1. Identification
+    currentY = drawSectionHeader('1. Identification de l\'Équipement', currentY);
+    currentY = drawRow('Nom Machine (Tag) :', assetTag, 'Type d\'équipement :', (asset.type || '—').toUpperCase(), currentY);
+    currentY = drawRow('Marque & Modèle :', `${asset.marque || ''} ${asset.modele || ''}`.trim() || '—', 'Numéro de Série (S/N) :', asset.serial_number || '—', currentY);
+    currentY = drawRow('Statut opérationnel :', (asset.statut || '—').replace(/_/g, ' ').toUpperCase(), 'Site d\'affectation :', asset.site || 'BOUAKE', currentY);
+    currentY = drawRow('Département affecté :', asset.departement || '—', 'Date de création :', asset.created_at ? new Date(asset.created_at).toLocaleDateString('fr-FR') : '—', currentY);
+    currentY += 6;
+
+    // 2. Spécifications techniques
+    const s = asset.specs || {};
+    currentY = drawSectionHeader('2. Caractéristiques & Spécifications Techniques', currentY);
+    currentY = drawRow('Processeur (CPU) :', s.cpu || '—', 'Mémoire Vive (RAM) :', s.ram || '—', currentY);
+    currentY = drawRow('Stockage Principal :', s.stockage || '—', 'Système d\'exploitation :', `${s.os || 'Windows'} ${s.version_os || ''}`.trim(), currentY);
+    currentY = drawRow('Adresse MAC :', s.mac_address || '—', 'Numéro IMEI :', s.imei || '—', currentY);
+    currentY = drawRow('Adresse IP locale :', s.ip_address || '—', 'Nom d\'hôte (Hostname) :', s.hostname || assetTag, currentY);
+    currentY += 6;
+
+    // 3. Conformité & Sécurité
+    const sec = asset.securite || {};
+    currentY = drawSectionHeader('3. Conformité & Sécurité du Poste', currentY);
+    currentY = drawRow('Antivirus Microsoft Defender :', sec.defender ? 'ACTIF (Conforme)' : 'NON DÉPLOYÉ', 'Chiffrement BitLocker :', sec.bitlocker ? 'ACTIVÉ (Conforme)' : 'DÉSACTIVÉ', currentY);
+    currentY = drawRow('Enrôlement Microsoft Intune :', sec.intune ? 'ENRÔLÉ (MDM)' : 'NON ENRÔLÉ', 'Jonction Microsoft Entra ID :', sec.entra_id ? 'JOINT (Azure AD)' : 'NON JOINT', currentY);
+    currentY = drawRow('Agent EDR / XDR :', sec.edr ? 'INSTALLÉ' : 'ABSENT', 'Sauvegarde OneDrive Pro :', sec.onedrive ? 'SYNCHRONISÉ' : 'NON CONFIGURÉ', currentY);
+    currentY += 6;
+
+    // 4. Utilisateur Actuel
+    currentY = drawSectionHeader('4. Affectation Actuelle & Détenteur', currentY);
+    currentY = drawRow('Collaborateur détenteur :', asset.utilisateur_actuel || 'En stock (Non attribué)', 'Direction / Service :', asset.utilisateur_departement || asset.departement || '—', currentY);
+    currentY = drawRow('Email professionnel :', asset.utilisateur_email || '—', 'Contact téléphonique :', asset.utilisateur_telephone || '—', currentY);
+    currentY += 6;
+
+    // 5. Coûts & Garantie
+    const c = asset.couts || {};
+    currentY = drawSectionHeader('5. Données Financières & Garanties', currentY);
+    currentY = drawRow('Fournisseur :', c.fournisseur || '—', 'Bon de commande :', c.bon_commande || '—', currentY);
+    currentY = drawRow('Coût d\'acquisition :', c.prix ? `${Number(c.prix).toLocaleString('fr-FR')} XOF` : '—', 'Date d\'acquisition :', c.date_acquisition ? new Date(c.date_acquisition).toLocaleDateString('fr-FR') : '—', currentY);
+    currentY = drawRow('Fin de garantie constructeur :', c.fin_garantie ? new Date(c.fin_garantie).toLocaleDateString('fr-FR') : '—', 'Observations / Notes :', asset.notes || 'R.A.S', currentY);
+    currentY += 12;
+
+    // Bloc de validation IT
+    doc.rect(40, currentY, 515, 60).strokeColor('#cbd5e1').stroke();
+    doc.fillColor('#0f172a').fontSize(8).font('Helvetica-Bold')
+       .text('VISA ET VALIDATION DIRECTION IT', 50, currentY + 8);
+    doc.fillColor('#64748b').fontSize(7.5).font('Helvetica')
+       .text('Document technique faisant foi de l\'enregistrement de cet équipement au registre d\'inventaire officiel du parc informatique.', 50, currentY + 22)
+       .text('Responsable Parc IT : ___________________________   Date de validation : ' + new Date().toLocaleDateString('fr-FR') + '   Cachet & Signature :', 50, currentY + 38);
+
+    // Bas de page
+    doc.fillColor('#94a3b8').fontSize(7).font('Helvetica')
+       .text('Direction IT Bouaké • Fiche Technique Officielle d\'Équipement Informatique • Page 1/1', 40, 785, { align: 'center', width: 515 });
+
+    doc.end();
+  } catch (err) {
+    logger.error('Erreur generatePdf asset:', err);
+    return error(res, 'Erreur lors de la génération de la fiche technique: ' + err.message, 500);
+  }
+}
+
 module.exports = {
   list,
   getOne,
@@ -276,5 +405,6 @@ module.exports = {
   uploadAttachment,
   downloadAttachment,
   deleteAttachment,
-  getQrCode
+  getQrCode,
+  generatePdf
 };

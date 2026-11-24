@@ -60,6 +60,10 @@ router.get('/:id/qr', requirePermission('assets:read'), [
   param('id').isInt().withMessage('ID invalide')
 ], validate, ctrl.getQrCode);
 
+router.get('/:id/pdf', requirePermission('assets:read'), [
+  param('id').isInt().withMessage('ID invalide')
+], validate, ctrl.generatePdf);
+
 router.post('/',
   requirePermission('assets:create'),
   [
