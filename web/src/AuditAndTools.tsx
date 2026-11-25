@@ -596,6 +596,19 @@ export function AuditsPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function handleCloseCampagne() {
+    if (!selectedCampagneId || !campagneData) return;
+    if (!window.confirm(`Clôturer définitivement la campagne "${campagneData.campagne.titre}" ?`)) return;
+    try {
+      await apiRequest(`/audits/${selectedCampagneId}/cloturer`, { token, method: 'POST' });
+      setScanFeedback({ message: '🔒 Campagne clôturée avec succès.', type: 'success' });
+      await loadCampagneDetails(selectedCampagneId);
+      await loadCampagnes();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur lors de la clôture');
+    }
+  }
+
   return (
     <div>
       <div className="page-heading">
@@ -623,7 +636,7 @@ export function AuditsPage() {
           className="select"
           value={selectedCampagneId || ''}
           onChange={(e) => setSelectedCampagneId(Number(e.target.value))}
-          style={{ minWidth: 280, fontWeight: 600 }}
+          style={{ width: 'auto', minWidth: 280, maxWidth: 420, fontWeight: 600 }}
         >
           {campagnes.map((c) => (
             <option key={String(c.id)} value={String(c.id)}>
@@ -633,14 +646,26 @@ export function AuditsPage() {
           {campagnes.length === 0 && <option value="">Aucune campagne enregistrée</option>}
         </select>
         {campagneData && (
-          <button
-            type="button"
-            className="button button-secondary"
-            onClick={handleExportCsv}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-          >
-            <FileSpreadsheet size={15} /> Exporter PV d'Audit (CSV)
-          </button>
+          <>
+            <button
+              type="button"
+              className="button button-secondary"
+              onClick={handleExportCsv}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <FileSpreadsheet size={15} /> Exporter PV d'Audit (CSV)
+            </button>
+            {campagneData.campagne.statut === 'en_cours' && (
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => void handleCloseCampagne()}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#dc2626', borderColor: '#fecaca' }}
+              >
+                <CheckCircle2 size={15} /> Clôturer la campagne
+              </button>
+            )}
+          </>
         )}
       </div>
 
@@ -701,34 +726,36 @@ export function AuditsPage() {
           </div>
 
           {/* Barre de scan terrain rapide */}
-          <div className="audit-scan-bar">
-            <input
-              type="text"
-              placeholder="Scanner ou saisir un Tag / Numéro de série..."
-              value={scanInput}
-              onChange={(e) => setScanInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void handleScanSubmit();
-              }}
-              style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, padding: '0 8px' }}
-            />
-            <button
-              type="button"
-              className="button button-secondary"
-              onClick={() => void handleScanSubmit()}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
-              <PackageCheck size={16} /> Pointer
-            </button>
-            <button
-              type="button"
-              className="button button-primary"
-              onClick={() => setShowScanner(true)}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
-              <ScanLine size={16} /> Scanner Caméra
-            </button>
-          </div>
+          {campagneData.campagne.statut === 'en_cours' && (
+            <div className="audit-scan-bar">
+              <input
+                type="text"
+                placeholder="Scanner ou saisir un Tag / Numéro de série..."
+                value={scanInput}
+                onChange={(e) => setScanInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void handleScanSubmit();
+                }}
+                style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, padding: '0 8px' }}
+              />
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => void handleScanSubmit()}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <PackageCheck size={16} /> Pointer
+              </button>
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={() => setShowScanner(true)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <ScanLine size={16} /> Scanner Caméra
+              </button>
+            </div>
+          )}
 
           {/* Notification feedback scan */}
           {scanFeedback && (
@@ -863,10 +890,15 @@ export function AuditsPage() {
       {showCreateModal && (
         <div className="dialog-backdrop" onClick={() => setShowCreateModal(false)}>
           <div className="create-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
-            <h3>Nouvelle Campagne d'Inventaire</h3>
-            <p style={{ color: '#64748b', fontSize: 12 }}>
-              Planifiez un pointage physique des machines pour un site spécifique.
-            </p>
+            <div className="dialog-heading">
+              <div>
+                <span className="eyebrow">INVENTAIRE PHYSIQUE</span>
+                <h2>Nouvelle Campagne</h2>
+              </div>
+              <button type="button" className="icon-button dialog-close" onClick={() => setShowCreateModal(false)} aria-label="Fermer">
+                <X size={18} />
+              </button>
+            </div>
             <form onSubmit={handleCreateCampagne} style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 16 }}>
               <div>
                 <label className="field-label">Titre de la campagne *</label>
