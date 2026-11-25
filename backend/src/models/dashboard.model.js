@@ -242,7 +242,19 @@ async function getAmortissementStats() {
   `);
 
   const now = new Date();
-  const DURATION_MONTHS = 36; // 3 ans d'amortissement linéaire standard
+  let DURATION_MONTHS = 36; // 3 ans d'amortissement linéaire standard
+  let configuredDevise = 'XOF';
+  try {
+    const settingsRows = await query('SELECT cle, valeur FROM system_settings WHERE cle IN (?, ?)', ['amortissement_mois', 'devise']);
+    for (const s of settingsRows || []) {
+      if (s.cle === 'amortissement_mois' && parseInt(s.valeur, 10) > 0) {
+        DURATION_MONTHS = parseInt(s.valeur, 10);
+      }
+      if (s.cle === 'devise' && s.valeur) {
+        configuredDevise = s.valeur;
+      }
+    }
+  } catch (_) {}
 
   let totalAcquisition = 0;
   let totalVNC = 0;
@@ -321,6 +333,8 @@ async function getAmortissementStats() {
     nb_machines_amorties: amortis100Count,
     age_moyen_annees: parseFloat(ageMoyenAnnees),
     budget_previsionnel_n1: budgetPrevisionnelN1,
+    duree_amortissement_mois: DURATION_MONTHS,
+    devise: configuredDevise,
     distribution_age: ageDistribution,
     items: formattedItems.slice(0, 50)
   };

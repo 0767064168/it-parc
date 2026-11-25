@@ -3019,7 +3019,7 @@ function ReportsPage() {
                 <h2 style={{ fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Coins size={18} color="#059669" /> Pilotage Financier, Amortissement & Budget N+1
                 </h2>
-                <p style={{ fontSize: 11 }}>Calcul de dépréciation linéaire (36 mois) et projection budgétaire de renouvellement</p>
+                <p style={{ fontSize: 11 }}>Calcul de dépréciation linéaire ({amortissement?.duree_amortissement_mois || 36} mois) et projection budgétaire de renouvellement</p>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
@@ -3039,7 +3039,7 @@ function ReportsPage() {
                   <div className="finance-card">
                     <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Valeur d'Acquisition Initiale</span>
                     <div className="finance-amount" style={{ color: '#0284c7' }}>
-                      {Number(amortissement.total_acquisition || 0).toLocaleString('fr-FR')} XOF
+                      {Number(amortissement.total_acquisition || 0).toLocaleString('fr-FR')} {amortissement.devise || 'XOF'}
                     </div>
                     <span style={{ fontSize: 11, color: '#64748b' }}>Investissement matériel total</span>
                   </div>
@@ -3047,7 +3047,7 @@ function ReportsPage() {
                   <div className="finance-card">
                     <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Valeur Nette Comptable (VNC)</span>
                     <div className="finance-amount" style={{ color: '#16a34a' }}>
-                      {Number(amortissement.total_vnc || 0).toLocaleString('fr-FR')} XOF
+                      {Number(amortissement.total_vnc || 0).toLocaleString('fr-FR')} {amortissement.devise || 'XOF'}
                     </div>
                     <span style={{ fontSize: 11, color: '#64748b' }}>Actifs non encore dépréciés</span>
                   </div>
@@ -3063,7 +3063,7 @@ function ReportsPage() {
                   <div className="finance-card">
                     <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Budget Prévisionnel N+1</span>
                     <div className="finance-amount" style={{ color: '#dc2626' }}>
-                      {Number(amortissement.budget_previsionnel_n1 || 0).toLocaleString('fr-FR')} XOF
+                      {Number(amortissement.budget_previsionnel_n1 || 0).toLocaleString('fr-FR')} {amortissement.devise || 'XOF'}
                     </div>
                     <span style={{ fontSize: 11, color: '#64748b' }}>Coût de remplacement du parc amorti</span>
                   </div>
