@@ -6,13 +6,12 @@
 
 const { query } = require('../config/db');
 const { success, error, paginated } = require('../utils/response');
+const { getPagination } = require('../utils/pagination');
 const logger = require('../utils/logger');
 
 async function listLogs(req, res) {
   try {
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 30));
-    const offset = (page - 1) * limit;
+    const { page, limit, offset } = getPagination(req.query, 30, 100);
     const { action, entity_type, search } = req.query;
 
     const conditions = [];

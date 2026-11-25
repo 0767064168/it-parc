@@ -11,6 +11,7 @@ export type OfflineActionItem = {
 };
 
 const STORAGE_KEY = 'parc-it-offline-queue';
+const MAX_OFFLINE_QUEUE_ITEMS = 100;
 export const OFFLINE_QUEUE_EVENT = 'parc-it:offline-queue-changed';
 
 export function getOfflineQueue(): OfflineActionItem[] {
@@ -26,7 +27,7 @@ export function getOfflineQueue(): OfflineActionItem[] {
 
 function saveOfflineQueue(items: OfflineActionItem[]) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items.slice(-MAX_OFFLINE_QUEUE_ITEMS)));
     window.dispatchEvent(new Event(OFFLINE_QUEUE_EVENT));
   } catch {
     // ignore storage quota errors

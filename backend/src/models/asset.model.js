@@ -8,9 +8,9 @@ const { query, transaction } = require('../config/db');
 /**
  * Liste paginée des assets avec filtres
  */
-async function findAll({ page = 1, limit = 20, type, statut, site, departement, search }) {
+async function findAll({ page = 1, limit = 20, type, statut, site, departement, search, archived = false }) {
   const offset = (page - 1) * limit;
-  const conditions = ['a.deleted_at IS NULL'];
+  const conditions = [archived ? 'a.deleted_at IS NOT NULL' : 'a.deleted_at IS NULL'];
   const params = [];
 
   if (type)        { conditions.push('a.type = ?');         params.push(type); }
@@ -37,7 +37,7 @@ async function findAll({ page = 1, limit = 20, type, statut, site, departement, 
   const sql = `
     SELECT
       a.id, a.\`Nom Machine\` as asset_tag, a.serial_number, a.marque, a.modele,
-      a.type, a.statut, a.site, a.departement, a.created_at, a.updated_at,
+      a.type, a.statut, a.site, a.departement, a.created_at, a.updated_at, a.deleted_at, a.notes,
       CONCAT(u.prenom, ' ', u.nom) as utilisateur_actuel,
       u.email as utilisateur_email,
       s.os, s.version_os,
@@ -64,7 +64,7 @@ async function findAll({ page = 1, limit = 20, type, statut, site, departement, 
 /**
  * Fiche complète d'un asset (toutes les sections)
  */
-async function findById(id) {
+async function findById(id, includeArchived = false) {
   const [asset] = await query(`
     SELECT a.*, a.\`Nom Machine\` as asset_tag,
       CONCAT(u.prenom, ' ', u.nom) as utilisateur_actuel,
@@ -75,7 +75,7 @@ async function findById(id) {
     FROM assets a
     LEFT JOIN affectations af ON af.asset_id = a.id AND af.actif = 1
     LEFT JOIN utilisateurs u ON u.id = af.user_id
-    WHERE a.id = ? AND a.deleted_at IS NULL
+    WHERE a.id = ? ${includeArchived ? '' : 'AND a.deleted_at IS NULL'}
   `, [id]);
 
   if (!asset) return null;
@@ -271,6 +271,17 @@ async function archive(id, motif = null) {
 }
 
 /**
+ * Restauration d'un asset archivé (remise en stock)
+ */
+async function restore(id) {
+  await query(
+    "UPDATE assets SET deleted_at = NULL, statut = 'en_stock', updated_at = NOW(), notes = CONCAT(COALESCE(notes, ''), ' | Restauré le ', TO_CHAR(NOW(), 'DD/MM/YYYY')) WHERE id = ?",
+    [id]
+  );
+  return true;
+}
+
+/**
  * Obtenir les valeurs distinctes pour les filtres
  */
 async function getFilterOptions() {
@@ -324,6 +335,6 @@ async function deleteAttachment(id) {
 }
 
 module.exports = { 
-  findAll, findById, search, create, update, archive, getFilterOptions,
+  findAll, findById, search, create, update, archive, restore, getFilterOptions,
   findAttachments, findAttachmentById, createAttachment, deleteAttachment 
 };

@@ -131,7 +131,7 @@ app.use(cors({
 const isDev = process.env.NODE_ENV === 'development';
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: isDev ? 100000 : (parseInt(process.env.RATE_LIMIT_MAX) || 200),
+  max: isDev ? 100000 : (parseInt(process.env.RATE_LIMIT_MAX) || 100),
   skip: () => isDev,
   standardHeaders: true,
   legacyHeaders: false,
@@ -152,8 +152,9 @@ app.use('/api/auth/login', authLimiter);
 
 // ── Parsers ───────────────────────────────────────────────────────────────────
 app.use(compression());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+const jsonBodyLimitMb = Math.min(50, Math.max(1, parseInt(process.env.JSON_BODY_LIMIT_MB, 10) || 10));
+app.use(express.json({ limit: `${jsonBodyLimitMb}mb` }));
+app.use(express.urlencoded({ extended: true, limit: `${jsonBodyLimitMb}mb` }));
 
 // ── Logging HTTP ──────────────────────────────────────────────────────────────
 app.use(morgan('combined', {

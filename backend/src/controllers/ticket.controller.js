@@ -6,6 +6,7 @@
 
 const { query, transaction } = require('../config/db');
 const { success, error, paginated } = require('../utils/response');
+const { getPagination } = require('../utils/pagination');
 const logger = require('../utils/logger');
 const EmailService = require('../services/email.service');
 const XLSX = require('@e965/xlsx');
@@ -186,8 +187,8 @@ async function create(req, res) {
  */
 async function list(req, res) {
   try {
-    const { page = 1, limit = 20, statut, priorite, type, site, technicien_id, search } = req.query;
-    const offset = (page - 1) * limit;
+    const { page, limit, offset } = getPagination(req.query);
+    const { statut, priorite, type, site, technicien_id, search } = req.query;
 
     const conditions = [];
     const params = [];

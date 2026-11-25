@@ -90,6 +90,13 @@ router.delete('/:id',
   ctrl.archive
 );
 
+router.post('/:id/restore',
+  requirePermission('assets:archive'),
+  [param('id').isInt()],
+  validate,
+  ctrl.restore
+);
+
 // ── Pièces Jointes Équipements ──────────────────────────────────────────────
 router.get('/:id/attachments',
   requirePermission('assets:read'),

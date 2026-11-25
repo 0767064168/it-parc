@@ -12,13 +12,14 @@ try {
 
 const { query, transaction } = require('../config/db');
 const { success, error, paginated } = require('../utils/response');
+const { getPagination } = require('../utils/pagination');
 const logger = require('../utils/logger');
 const { sendAffectationNotification } = require('../services/email.service');
 
 async function list(req, res) {
   try {
-    const { page = 1, limit = 20, asset_id, user_id, actif, site, departement, search } = req.query;
-    const offset = (page - 1) * limit;
+    const { page, limit, offset } = getPagination(req.query);
+    const { asset_id, user_id, actif, site, departement, search } = req.query;
     const conditions = [];
     const params = [];
 

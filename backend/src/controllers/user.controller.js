@@ -2,13 +2,15 @@
 const UserModel = require('../models/user.model');
 const { query } = require('../config/db');
 const { success, error, paginated } = require('../utils/response');
+const { getPagination } = require('../utils/pagination');
 const logger = require('../utils/logger');
 const bcrypt = require('bcryptjs');
 
 async function list(req, res) {
   try {
-    const { page = 1, limit = 20, site, departement, search } = req.query;
-    const { users, total } = await UserModel.findAll({ page: parseInt(page), limit: parseInt(limit), site, departement, search });
+    const { page, limit } = getPagination(req.query);
+    const { site, departement, search } = req.query;
+    const { users, total } = await UserModel.findAll({ page, limit, site, departement, search });
     return paginated(res, users, total, page, limit);
   } catch (err) {
     logger.error('Erreur list users:', err);

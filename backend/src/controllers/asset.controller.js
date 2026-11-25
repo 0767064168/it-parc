@@ -20,14 +20,17 @@ try {
 const AssetModel = require('../models/asset.model');
 const { query } = require('../config/db');
 const { success, error, paginated } = require('../utils/response');
+const { getPagination } = require('../utils/pagination');
 const logger = require('../utils/logger');
 
 async function list(req, res) {
   try {
-    const { page = 1, limit = 20, type, statut, site, departement, search } = req.query;
+    const { page, limit } = getPagination(req.query);
+    const { type, statut, site, departement, search, archived } = req.query;
     const { assets, total } = await AssetModel.findAll({
-      page: parseInt(page), limit: parseInt(limit),
-      type, statut, site, departement, search
+      page, limit,
+      type, statut, site, departement, search,
+      archived: archived === 'true' || archived === '1'
     });
     return paginated(res, assets, total, page, limit);
   } catch (err) {
@@ -49,7 +52,8 @@ async function getOne(req, res) {
 
 async function searchAssets(req, res) {
   try {
-    const { q, limit = 20 } = req.query;
+    const { q } = req.query;
+    const { limit } = getPagination(req.query, 20, 100);
     if (!q || q.trim().length < 2) return error(res, 'Recherche trop courte (min 2 caractères)', 400);
     const assets = await AssetModel.search(q.trim(), parseInt(limit));
     return success(res, assets);
@@ -111,6 +115,25 @@ async function archive(req, res) {
   } catch (err) {
     logger.error('Erreur archive asset:', err);
     return error(res, 'Erreur lors de l\'archivage', 500);
+  }
+}
+
+async function restore(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    const existing = await AssetModel.findById(id, true);
+    if (!existing) return error(res, 'Asset introuvable', 404);
+    if (!existing.deleted_at) return error(res, 'Cet équipement n\'est pas archivé', 400);
+
+    await AssetModel.restore(id);
+    await query(
+      'INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)',
+      [req.user.id, 'RESTORE', 'asset', id, JSON.stringify({ asset_tag: existing.asset_tag })]
+    );
+    return success(res, null, 'Équipement restauré en stock avec succès');
+  } catch (err) {
+    logger.error('Erreur restore asset:', err);
+    return error(res, 'Erreur lors de la restauration', 500);
   }
 }
 
@@ -401,6 +424,7 @@ module.exports = {
   create,
   update,
   archive,
+  restore,
   filterOptions,
   listAttachments,
   uploadAttachment,

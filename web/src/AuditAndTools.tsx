@@ -23,6 +23,7 @@ import {
   UserCheck,
   Settings,
   Save,
+  FileUp,
 } from 'lucide-react';
 import { apiDownload, apiRequest } from './api';
 import { useAuth } from './auth';
@@ -1793,6 +1794,338 @@ export function SettingsPage() {
           </section>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── 8. MODAL IMPORT CSV EN MASSE AVEC PRÉ-VALIDATION NOMENCLATURE ──────────
+interface CsvPreviewRow {
+  line: number;
+  asset_tag: string;
+  marque: string;
+  modele: string;
+  type: string;
+  site: string;
+  departement: string;
+  status: 'valid' | 'warning' | 'error';
+  messages: string[];
+}
+
+const NOMENCLATURE_PATTERN = /^[A-Z0-9]{2,12}-[A-Z0-9]{2,10}-[A-Z0-9]{2,12}-[A-Z0-9_]{2,20}$/i;
+
+function parseCsvLines(text: string): string[][] {
+  const clean = text.replace(/^\uFEFF/, '');
+  const firstLine = clean.split(/\r?\n/)[0] || '';
+  const sep = (firstLine.match(/;/g)?.length ?? 0) >= (firstLine.match(/,/g)?.length ?? 0) ? ';' : ',';
+  const rows: string[][] = [];
+  let currentRow: string[] = [];
+  let currentCell = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < clean.length; i++) {
+    const ch = clean[i];
+    const next = clean[i + 1];
+    if (inQuotes) {
+      if (ch === '"' && next === '"') {
+        currentCell += '"';
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        currentCell += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === sep) {
+      currentRow.push(currentCell.trim());
+      currentCell = '';
+    } else if (ch === '\r' && next === '\n') {
+      currentRow.push(currentCell.trim());
+      if (currentRow.some((c) => c !== '')) rows.push(currentRow);
+      currentRow = [];
+      currentCell = '';
+      i++;
+    } else if (ch === '\n' || ch === '\r') {
+      currentRow.push(currentCell.trim());
+      if (currentRow.some((c) => c !== '')) rows.push(currentRow);
+      currentRow = [];
+      currentCell = '';
+    } else {
+      currentCell += ch;
+    }
+  }
+  if (currentCell !== '' || currentRow.length > 0) {
+    currentRow.push(currentCell.trim());
+    if (currentRow.some((c) => c !== '')) rows.push(currentRow);
+  }
+  return rows;
+}
+
+export function CsvImportAssetsModal({
+  token,
+  onClose,
+  onImported,
+}: {
+  token: string | null;
+  onClose: () => void;
+  onImported: () => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [previewRows, setPreviewRows] = useState<CsvPreviewRow[]>([]);
+  const [isExcelBinary, setIsExcelBinary] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [resultMsg, setResultMsg] = useState('');
+  const [serverErrors, setServerErrors] = useState<Array<{ ligne?: number; erreur?: string }>>([]);
+
+  function downloadTemplate() {
+    const headers = ['Nom Machine', 'Marque', 'Modele', 'Type', 'Statut', 'Site', 'Departement', 'Numero de serie', 'RAM', 'Stockage', 'CPU', 'OS', 'Prix', 'Fin Garantie'];
+    const sample = ['PC-CC-IT-YVES', 'Dell', 'Latitude 5430', 'laptop', 'en_service', 'BOUAKE', 'Direction IT', 'SN123456', '16 Go', '512 Go SSD', 'Intel Core i5', 'Windows 11 Pro', '650000', '2027-12-31'];
+    const csv = '\uFEFF' + [headers.join(';'), sample.join(';')].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'modele_import_parc_it.csv';
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    a.remove();
+  }
+
+  async function handleFileChange(selected: File | null) {
+    setFile(selected);
+    setPreviewRows([]);
+    setErrorMsg('');
+    setResultMsg('');
+    setServerErrors([]);
+    if (!selected) return;
+
+    const ext = selected.name.split('.').pop()?.toLowerCase() ?? '';
+    if (ext === 'xlsx' || ext === 'xls') {
+      setIsExcelBinary(true);
+      return;
+    }
+
+    setIsExcelBinary(false);
+    try {
+      const text = await selected.text();
+      const parsed = parseCsvLines(text);
+      if (parsed.length < 2) {
+        setErrorMsg('Le fichier CSV doit contenir une ligne d’en-tête et au moins une ligne de données.');
+        return;
+      }
+
+      const headers = parsed[0].map((h) => h.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim());
+      const findCol = (candidates: string[]) => headers.findIndex((h) => candidates.some((c) => h === c || h.includes(c)));
+      const idxTag = findCol(['nom machine', 'nom_machine', 'asset tag', 'tag']);
+      const idxMarque = findCol(['marque']);
+      const idxModele = findCol(['modele']);
+      const idxType = findCol(['type']);
+      const idxSite = findCol(['site']);
+      const idxDept = findCol(['departement']);
+
+      if (idxTag === -1) {
+        setErrorMsg('Colonne « Nom Machine » (ou Asset Tag) introuvable dans les en-têtes CSV.');
+        return;
+      }
+
+      const seenTags = new Set<string>();
+      const previews: CsvPreviewRow[] = [];
+      for (let i = 1; i < parsed.length; i++) {
+        const row = parsed[i];
+        const tag = (row[idxTag] || '').trim().toUpperCase();
+        const messages: string[] = [];
+        let status: CsvPreviewRow['status'] = 'valid';
+
+        if (!tag) {
+          status = 'error';
+          messages.push('Nom Machine manquant (ligne ignorée)');
+        } else {
+          if (!NOMENCLATURE_PATTERN.test(tag)) {
+            status = 'warning';
+            messages.push('Nomenclature non conforme (attendu : ÉQUIPEMENT-SOCIÉTÉ-DÉPARTEMENT-NOM)');
+          }
+          if (seenTags.has(tag)) {
+            if (status === 'valid') status = 'warning';
+            messages.push('Doublon dans le fichier (sera mis à jour)');
+          }
+          seenTags.add(tag);
+        }
+
+        previews.push({
+          line: i + 1,
+          asset_tag: tag || '—',
+          marque: idxMarque >= 0 ? (row[idxMarque] || '—') : '—',
+          modele: idxModele >= 0 ? (row[idxModele] || '—') : '—',
+          type: idxType >= 0 ? (row[idxType] || 'autre') : 'autre',
+          site: idxSite >= 0 ? (row[idxSite] || '—') : '—',
+          departement: idxDept >= 0 ? (row[idxDept] || '—') : '—',
+          status,
+          messages,
+        });
+      }
+      setPreviewRows(previews);
+    } catch {
+      setErrorMsg('Impossible de lire le fichier CSV.');
+    }
+  }
+
+  const stats = useMemo(() => {
+    const valid = previewRows.filter((r) => r.status === 'valid').length;
+    const warnings = previewRows.filter((r) => r.status === 'warning').length;
+    const errors = previewRows.filter((r) => r.status === 'error').length;
+    return { total: previewRows.length, valid, warnings, errors };
+  }, [previewRows]);
+
+  async function submitImport() {
+    if (!file) return;
+    setBusy(true);
+    setErrorMsg('');
+    setResultMsg('');
+    setServerErrors([]);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await apiRequest<{
+        created?: number;
+        updated?: number;
+        skipped?: number;
+        errors?: Array<{ ligne?: number; erreur?: string }>;
+        warnings?: Array<{ ligne?: number; asset_tag?: string; message?: string }>;
+      }>('/importexport/import/excel', {
+        method: 'POST',
+        token,
+        body: formData,
+      });
+      const warnCount = Array.isArray(res.warnings) ? res.warnings.length : 0;
+      setResultMsg(
+        `Import terminé : ${res.created ?? 0} créés, ${res.updated ?? 0} mis à jour, ${res.skipped ?? 0} ignorés` +
+        (warnCount > 0 ? ` (${warnCount} avertissement(s) de nomenclature).` : '.')
+      );
+      if (Array.isArray(res.errors) && res.errors.length > 0) {
+        setServerErrors(res.errors);
+      }
+      onImported();
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Erreur lors de l’import.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="dialog-backdrop" onClick={onClose}>
+      <div className="dialog-card" style={{ maxWidth: 820, width: '95%' }} onClick={(e) => e.stopPropagation()}>
+        <div className="dialog-heading">
+          <div>
+            <h2>Importer des équipements (CSV / Excel)</h2>
+            <p style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+              Pré-validation de la nomenclature <strong>ÉQUIPEMENT-SOCIÉTÉ-DÉPARTEMENT-NOM</strong> (ex: <code>PC-CC-IT-YVES</code>)
+            </p>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Fermer"><X size={18} /></button>
+        </div>
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 14 }}>
+          <input
+            type="file"
+            accept=".csv,.xlsx,.xls"
+            onChange={(e) => void handleFileChange(e.target.files?.[0] ?? null)}
+            className="input"
+            style={{ flex: 1, minWidth: 240 }}
+          />
+          <button type="button" className="button button-secondary" onClick={downloadTemplate}>
+            <Download size={15} /> Modèle CSV
+          </button>
+        </div>
+
+        {errorMsg && <div className="alert alert-error" style={{ marginBottom: 12 }}>{errorMsg}</div>}
+        {resultMsg && <div className="alert alert-success" style={{ marginBottom: 12 }}>{resultMsg}</div>}
+
+        {isExcelBinary && file && (
+          <div className="alert" style={{ marginBottom: 12, background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af', padding: 10, borderRadius: 8, fontSize: 12 }}>
+            Fichier Excel sélectionné (<strong>{file.name}</strong>). La validation et l’import seront effectués côté serveur.
+          </div>
+        )}
+
+        {previewRows.length > 0 && (
+          <>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+              <span className="badge" style={{ background: '#f1f5f9', color: '#334155', padding: '4px 10px', borderRadius: 999, fontSize: 12 }}>
+                Total : <strong>{stats.total}</strong>
+              </span>
+              <span className="badge" style={{ background: '#dcfce7', color: '#166534', padding: '4px 10px', borderRadius: 999, fontSize: 12 }}>
+                Conformes : <strong>{stats.valid}</strong>
+              </span>
+              <span className="badge" style={{ background: '#fef3c7', color: '#92400e', padding: '4px 10px', borderRadius: 999, fontSize: 12 }}>
+                Avertissements : <strong>{stats.warnings}</strong>
+              </span>
+              <span className="badge" style={{ background: '#fee2e2', color: '#991b1b', padding: '4px 10px', borderRadius: 999, fontSize: 12 }}>
+                Erreurs : <strong>{stats.errors}</strong>
+              </span>
+            </div>
+
+            <div style={{ maxHeight: 280, overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: 8, marginBottom: 14 }}>
+              <table className="data-table" style={{ fontSize: 12 }}>
+                <thead>
+                  <tr>
+                    <th>Ligne</th>
+                    <th>Nom Machine</th>
+                    <th>Marque / Modèle</th>
+                    <th>Site</th>
+                    <th>Validation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewRows.slice(0, 50).map((r) => (
+                    <tr key={r.line}>
+                      <td>#{r.line}</td>
+                      <td><strong>{r.asset_tag}</strong></td>
+                      <td>{r.marque} {r.modele}</td>
+                      <td>{r.site}</td>
+                      <td>
+                        {r.status === 'valid' && <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Conforme</span>}
+                        {r.status === 'warning' && <span style={{ color: '#d97706', fontWeight: 600 }}>⚠ {r.messages.join(' • ')}</span>}
+                        {r.status === 'error' && <span style={{ color: '#dc2626', fontWeight: 600 }}>✕ {r.messages.join(' • ')}</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {previewRows.length > 50 && (
+                <div style={{ padding: 8, textAlign: 'center', fontSize: 11, color: '#64748b' }}>
+                  Aperçu limité aux 50 premières lignes sur {previewRows.length}.
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {serverErrors.length > 0 && (
+          <div className="alert alert-error" style={{ marginBottom: 12, fontSize: 12 }}>
+            <strong>Détails erreurs serveur :</strong>
+            <ul style={{ margin: '6px 0 0 18px' }}>
+              {serverErrors.slice(0, 10).map((e, idx) => (
+                <li key={idx}>Ligne {e.ligne ?? '?'} : {e.erreur}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="dialog-actions">
+          <button type="button" className="button button-secondary" onClick={onClose}>Fermer</button>
+          <button
+            type="button"
+            className="button button-primary"
+            disabled={!file || busy || (previewRows.length > 0 && stats.valid + stats.warnings === 0)}
+            onClick={() => void submitImport()}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <FileUp size={15} /> {busy ? 'Import en cours…' : 'Lancer l’import'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -64,7 +64,7 @@ import {
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiDownload, apiRequest } from './api';
 import { useAuth } from './auth';
-import { QrScannerModal, BatchQrLabelsModal, SignaturePadModal, AuditsPage, ActivityLogsPage, MonEspacePage, SettingsPage } from './AuditAndTools';
+import { QrScannerModal, BatchQrLabelsModal, SignaturePadModal, CsvImportAssetsModal, AuditsPage, ActivityLogsPage, MonEspacePage, SettingsPage } from './AuditAndTools';
 import { getOfflineQueue, syncOfflineQueue, OFFLINE_QUEUE_EVENT } from './offlineQueue';
 
 type DashboardData = {
@@ -1299,6 +1299,8 @@ function ModulePage({ path }: { path: string }) {
   const [siteFilter, setSiteFilter] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [statutFilterState, setStatutFilterState] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const [showCsvImport, setShowCsvImport] = useState(false);
 
   const rows = useMemo(() => extractRows(payload), [payload]);
   const filteredRows = useMemo(() => {
@@ -1543,6 +1545,23 @@ function ModulePage({ path }: { path: string }) {
     }
   }
 
+  async function restoreRow(row: Record<string, unknown>) {
+    const id = Number(row.id);
+    if (!Number.isInteger(id) || id <= 0) return;
+    const label = String(row.asset_tag ?? row['Nom Machine'] ?? `#${id}`);
+    if (!window.confirm(`Restaurer l’équipement « ${label} » en stock ?`)) return;
+    try {
+      await apiRequest<unknown>(`/assets/${id}/restore`, {
+        method: 'POST',
+        token,
+      });
+      setSuccessMessage(`Équipement « ${label} » restauré en stock.`);
+      setRefreshKey((current) => current + 1);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'La restauration a échoué.');
+    }
+  }
+
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -1554,6 +1573,7 @@ function ModulePage({ path }: { path: string }) {
         ...(statusFilter ? { statut: statusFilter } : statutFilterState ? { statut: statutFilterState } : {}),
         ...(siteFilter ? { site: siteFilter } : {}),
         ...(deptFilter ? { departement: deptFilter } : {}),
+        ...(path === '/assets' && showArchived ? { archived: 'true' } : {}),
         ...(definition.canSearch && submittedQuery ? { search: submittedQuery } : {}),
       },
     }).then((result) => {
@@ -1564,7 +1584,7 @@ function ModulePage({ path }: { path: string }) {
       if (active) setLoading(false);
     });
     return () => { active = false; };
-  }, [definition, page, refreshKey, statusFilter, statutFilterState, siteFilter, deptFilter, submittedQuery, token]);
+  }, [definition, path, page, refreshKey, statusFilter, statutFilterState, siteFilter, deptFilter, showArchived, submittedQuery, token]);
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1934,6 +1954,15 @@ function ModulePage({ path }: { path: string }) {
           </div>
         </div>
       )}
+      {showCsvImport && (
+        <CsvImportAssetsModal
+          token={token}
+          onClose={() => setShowCsvImport(false)}
+          onImported={() => {
+            setRefreshKey((current) => current + 1);
+          }}
+        />
+      )}
       {createOpen && definition.createFields && (
         <CreateItemDialog
           definition={definition}
@@ -1974,6 +2003,28 @@ function ModulePage({ path }: { path: string }) {
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
               <Printer size={15} /> Planche d'étiquettes A4
+            </button>
+          )}
+          {path === '/assets' && role === 'admin' && (
+            <button
+              type="button"
+              className="button button-secondary"
+              onClick={() => setShowCsvImport(true)}
+              title="Importer des équipements en masse avec pré-validation CSV"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <FileUp size={15} /> Importer CSV
+            </button>
+          )}
+          {path === '/assets' && role === 'admin' && (
+            <button
+              type="button"
+              className={`button ${showArchived ? 'button-primary' : 'button-secondary'}`}
+              onClick={() => { setShowArchived((v) => !v); setPage(1); }}
+              title="Afficher les équipements archivés (corbeille)"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <Archive size={15} /> {showArchived ? 'Voir parc actif' : 'Corbeille'}
             </button>
           )}
           <button
@@ -2260,7 +2311,21 @@ function ModulePage({ path }: { path: string }) {
                             <Pencil size={13} /><span>Modifier</span>
                           </button>
                         )}
-                        {canDelete && (
+                        {path === '/assets' && showArchived && role === 'admin' && (
+                          <button
+                            type="button"
+                            className="button button-primary row-action-button"
+                            title="Restaurer en stock"
+                            aria-label={`Restaurer ${String(row.asset_tag ?? row.nom ?? row.id)}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void restoreRow(row);
+                            }}
+                          >
+                            <RotateCcw size={13} /><span>Restaurer</span>
+                          </button>
+                        )}
+                        {canDelete && !(path === '/assets' && showArchived) && (
                           <button
                             type="button"
                             className="button button-danger row-action-button"

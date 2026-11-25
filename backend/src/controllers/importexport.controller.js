@@ -94,7 +94,11 @@ const TYPE_MAP = {
   'tablette': 'tablette', 'tablet': 'tablette',
   'pax': 'pax_terminal', 'terminal': 'pax_terminal', 'pax a920': 'pax_terminal',
   'serveur': 'serveur', 'server': 'serveur',
+  'switch': 'switch', 'commutateur': 'switch',
+  'routeur': 'routeur', 'router': 'routeur',
 };
+
+const NOMENCLATURE_REGEX = /^[A-Z0-9]{2,12}-[A-Z0-9]{2,10}-[A-Z0-9]{2,12}-[A-Z0-9_]{2,20}$/i;
 
 const STATUT_MAP = {
   'en service': 'en_service', 'actif': 'en_service', 'active': 'en_service',
@@ -194,7 +198,7 @@ async function importExcel(req, res) {
       return error(res, 'Impossible de trouver les en-têtes de colonnes requis (ex: asset tag, marque, type) dans le fichier.', 400);
     }
 
-    let imported = 0, skipped = 0, errors = [], created = 0, updated = 0;
+    let imported = 0, skipped = 0, errors = [], warnings = [], created = 0, updated = 0;
     const totalDataRows = rowsRaw.length - (headerRowIndex + 1);
 
     for (let i = headerRowIndex + 1; i < rowsRaw.length; i++) {
@@ -213,8 +217,16 @@ async function importExcel(req, res) {
 
         if (!mapped.asset_tag) { skipped++; continue; }
 
-        const asset_tag = mapped.asset_tag.toString().trim();
+        const asset_tag = mapped.asset_tag.toString().trim().toUpperCase();
         if (!asset_tag) { skipped++; continue; }
+
+        if (!NOMENCLATURE_REGEX.test(asset_tag)) {
+          warnings.push({
+            ligne: i + 1,
+            asset_tag,
+            message: 'Nomenclature non conforme (attendu : ÉQUIPEMENT-SOCIÉTÉ-DÉPARTEMENT-NOM, ex: PC-CC-IT-YVES)'
+          });
+        }
 
         // Normaliser type et statut
         const rawType = normalizeKey(mapped.type || '');
@@ -365,7 +377,7 @@ async function importExcel(req, res) {
       [req.user.id, 'IMPORT_EXCEL', 'asset', JSON.stringify({ imported, created, updated, skipped, total: totalDataRows })]
     );
 
-    return success(res, { created, updated, skipped, errors, total: totalDataRows },
+    return success(res, { created, updated, skipped, errors, warnings, total: totalDataRows },
       `Import terminé: ${imported} machines traitées (${created} créées, ${updated} mises à jour)`);
   } catch (err) {
     logger.error('Erreur import Excel:', err);

@@ -170,4 +170,31 @@ describe('Nouveaux modules DSI (Audits, Logs, Mon Espace, Paramètres, Amortisse
       ['reforme', 'Matériel réformé', 42]
     );
   });
+
+  test('asset.restore restaure un équipement archivé en stock', async () => {
+    query.mockResolvedValue([]);
+    query.mockResolvedValueOnce([{ id: 42, asset_tag: 'PC-CC-IT-TEST', deleted_at: '2026-11-20' }]);
+
+    const req = { params: { id: '42' }, user: { id: 1 } };
+    const res = mockRes();
+
+    await assetCtrl.restore(req, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining("UPDATE assets SET deleted_at = NULL, statut = 'en_stock'"),
+      [42]
+    );
+  });
+
+  test('asset.restore rejette un équipement non archivé (400)', async () => {
+    query.mockResolvedValue([]);
+    query.mockResolvedValueOnce([{ id: 42, asset_tag: 'PC-CC-IT-TEST', deleted_at: null }]);
+
+    const req = { params: { id: '42' }, user: { id: 1 } };
+    const res = mockRes();
+
+    await assetCtrl.restore(req, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+  });
 });
