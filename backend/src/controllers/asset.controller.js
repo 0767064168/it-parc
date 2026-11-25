@@ -101,10 +101,11 @@ async function archive(req, res) {
     const existing = await AssetModel.findById(id);
     if (!existing) return error(res, 'Asset introuvable', 404);
 
-    await AssetModel.archive(id, req.body.motif);
+    const motif = req.body?.motif || null;
+    await AssetModel.archive(id, motif);
     await query(
       'INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)',
-      [req.user.id, 'ARCHIVE', 'asset', id, JSON.stringify({ motif: req.body.motif })]
+      [req.user.id, 'ARCHIVE', 'asset', id, JSON.stringify({ motif })]
     );
     return success(res, null, 'Asset archivé avec succès');
   } catch (err) {

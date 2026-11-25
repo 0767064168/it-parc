@@ -23,6 +23,7 @@ const auditCtrl = require('../src/controllers/audit.controller');
 const logsCtrl = require('../src/controllers/logs.controller');
 const dashboardCtrl = require('../src/controllers/dashboard.controller');
 const settingsCtrl = require('../src/controllers/settings.controller');
+const assetCtrl = require('../src/controllers/asset.controller');
 
 function mockRes() {
   return {
@@ -141,5 +142,32 @@ describe('Nouveaux modules DSI (Audits, Logs, Mon Espace, Paramètres, Amortisse
       success: true,
       data: expect.objectContaining({ sent: true, to: 'test@bouake.ci' }),
     }));
+  });
+
+  test('asset.archive fonctionne sans req.body (DELETE sans payload)', async () => {
+    query.mockResolvedValue([]);
+    query.mockResolvedValueOnce([{ id: 42, asset_tag: 'PC-CC-IT-TEST' }]);
+
+    const req = { params: { id: '42' }, user: { id: 1 } }; // req.body undefined
+    const res = mockRes();
+
+    await assetCtrl.archive(req, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+  });
+
+  test('asset.archive transmet le motif quand fourni', async () => {
+    query.mockResolvedValue([]);
+    query.mockResolvedValueOnce([{ id: 42, asset_tag: 'PC-CC-IT-TEST' }]);
+
+    const req = { params: { id: '42' }, body: { motif: 'Matériel réformé' }, user: { id: 1 } };
+    const res = mockRes();
+
+    await assetCtrl.archive(req, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE assets SET statut = ?'),
+      ['reforme', 'Matériel réformé', 42]
+    );
   });
 });
