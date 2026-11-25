@@ -861,7 +861,7 @@ export function AuditsPage() {
 
       {/* Modal Création de Campagne */}
       {showCreateModal && (
-        <div className="dialog-overlay" onClick={() => setShowCreateModal(false)}>
+        <div className="dialog-backdrop" onClick={() => setShowCreateModal(false)}>
           <div className="create-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
             <h3>Nouvelle Campagne d'Inventaire</h3>
             <p style={{ color: '#64748b', fontSize: 12 }}>
@@ -1481,7 +1481,7 @@ export function MonEspacePage() {
 
       {/* Modal Signalement Rapide */}
       {incidentAsset && (
-        <div className="dialog-overlay" onClick={() => setIncidentAsset(null)}>
+        <div className="dialog-backdrop" onClick={() => setIncidentAsset(null)}>
           <div className="create-dialog" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <h3 style={{ margin: 0 }}>Signaler un incident IT</h3>
