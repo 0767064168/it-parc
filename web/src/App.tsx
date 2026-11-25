@@ -157,7 +157,7 @@ type FormFieldDefinition = {
 };
 
 const assetFormFields: FormFieldDefinition[] = [
-  { name: 'asset_tag', label: 'Nom Machine / Référence (ex: PC-CC-IT-YVES)', required: true, placeholder: 'PC-CC-IT-YVES (Équipement-Société-Département-Nom)' },
+  { name: 'asset_tag', label: 'Nom Machine / Référence (ex: ÉQUIPEMENT-SOCIÉTÉ-DÉPARTEMENT-NOM)', required: true, placeholder: 'ÉQUIPEMENT-SOCIÉTÉ-DÉPARTEMENT-NOM' },
   { name: 'serial_number', label: 'Numéro de série (S/N)', placeholder: 'Ex: 5CD1234ABC' },
   { name: 'type', label: 'Type d’équipement', type: 'select', options: ['laptop', 'desktop', 'pax_terminal', 'ecran', 'imprimante', 'telephone', 'tablette', 'serveur', 'reseau'], required: true },
   { name: 'marque', label: 'Marque', required: true, placeholder: 'Dell, HP, Lenovo, Apple…' },
