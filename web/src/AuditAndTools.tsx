@@ -11,6 +11,11 @@ import {
   Plus,
   FileSpreadsheet,
   PackageCheck,
+  ShieldAlert,
+  Mail,
+  RefreshCw,
+  Search,
+  Clock,
 } from 'lucide-react';
 import { apiRequest } from './api';
 import { useAuth } from './auth';
@@ -872,6 +877,294 @@ export function AuditsPage() {
           void handleScanSubmit(code);
         }}
       />
+    </div>
+  );
+}
+
+// ============================================================================
+// 5. JOURNAL D'AUDIT & TRAÇABILITÉ SYSTÈME (/logs)
+// ============================================================================
+export function ActivityLogsPage() {
+  const { token } = useAuth();
+  const [logs, setLogs] = useState<Array<Record<string, unknown>>>([]);
+  const [stats, setStats] = useState<{ total: number; last_24h: number; by_action: Array<{ action: string; count: number }> } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [search, setSearch] = useState('');
+  const [entityFilter, setEntityFilter] = useState('');
+  const [emailStatus, setEmailStatus] = useState<string>('');
+  const [sendingEmail, setSendingEmail] = useState(false);
+
+  async function loadLogs() {
+    setLoading(true);
+    try {
+      const res = await apiRequest<any>('/logs', {
+        token,
+        query: {
+          page,
+          limit: 25,
+          search: search.trim() || undefined,
+          entity_type: entityFilter || undefined,
+        },
+      });
+      if (Array.isArray(res)) {
+        setLogs(res);
+      } else if (res && Array.isArray(res.data)) {
+        setLogs(res.data);
+        setTotalPages(res.pagination?.totalPages || 1);
+      }
+    } catch (_) {
+      setLogs([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadStats() {
+    try {
+      const data = await apiRequest<any>('/logs/stats', { token });
+      setStats(data);
+    } catch (_) {}
+  }
+
+  useEffect(() => {
+    void loadLogs();
+  }, [token, page, entityFilter]);
+
+  useEffect(() => {
+    void loadStats();
+  }, [token]);
+
+  async function handleTriggerExpiringDigest() {
+    setSendingEmail(true);
+    setEmailStatus('');
+    try {
+      const res = await apiRequest<{ sent: boolean; licences?: number; garanties?: number; recipients?: number }>('/dashboard/send-expiring-alerts', {
+        token,
+        method: 'POST',
+      });
+      if (res.sent) {
+        setEmailStatus(`✅ Veille échéances envoyée (${res.licences} licence(s), ${res.garanties} garantie(s)) à ${res.recipients} admin(s).`);
+      } else {
+        setEmailStatus('ℹ️ Aucune licence ou garantie n’arrive à échéance dans les 30 prochains jours.');
+      }
+    } catch (err: unknown) {
+      setEmailStatus(err instanceof Error ? `❌ ${err.message}` : '❌ Erreur lors de l’envoi.');
+    } finally {
+      setSendingEmail(false);
+    }
+  }
+
+  function handleExportLogsCsv() {
+    const headers = ['ID', 'Date/Heure', 'Auteur', 'Rôle', 'Action', 'Entité', 'ID Entité', 'Détails', 'Adresse IP'];
+    const rows = logs.map((l) => [
+      l.id,
+      l.created_at ? new Date(String(l.created_at)).toLocaleString('fr-FR') : '',
+      [l.prenom, l.nom].filter(Boolean).join(' ') || l.username || `User #${l.user_id || '?'}`,
+      l.role || '',
+      l.action,
+      l.entity_type || '',
+      l.entity_id || '',
+      typeof l.details === 'object' && l.details ? JSON.stringify(l.details) : String(l.details || ''),
+      l.ip_address || '',
+    ]);
+    const csv = '\uFEFF' + [headers.join(';'), ...rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';'))].join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Journal_Audit_ParcIT_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function actionBadgeStyle(action: string): { bg: string; color: string } {
+    const a = (action || '').toUpperCase();
+    if (a.includes('DELETE') || a.includes('REMOVE')) return { bg: '#fee2e2', color: '#991b1b' };
+    if (a.includes('CREATE') || a.includes('ADD')) return { bg: '#dcfce7', color: '#166534' };
+    if (a.includes('RESTITUTION') || a.includes('RETRAIT')) return { bg: '#fef3c7', color: '#92400e' };
+    if (a.includes('LOGIN')) return { bg: '#ede9fe', color: '#5b21b6' };
+    return { bg: '#e0f2fe', color: '#075985' };
+  }
+
+  return (
+    <div>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">SÉCURITÉ & GOUVERNANCE</span>
+          <h1>Journal d'Audit Système</h1>
+          <p>Traçabilité complète des opérations critiques, connexions et alertes automatiques.</p>
+        </div>
+        <div className="heading-actions">
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={() => void handleTriggerExpiringDigest()}
+            disabled={sendingEmail}
+            title="Envoyer par e-mail le rapport des licences et garanties expirant sous 30 jours"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <Mail size={15} /> {sendingEmail ? 'Envoi...' : 'Veille Échéances (E-mail)'}
+          </button>
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={handleExportLogsCsv}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <FileSpreadsheet size={15} /> Exporter CSV
+          </button>
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={() => { void loadLogs(); void loadStats(); }}
+          >
+            <RefreshCw size={15} /> Actualiser
+          </button>
+        </div>
+      </div>
+
+      {emailStatus && (
+        <div className="panel" style={{ padding: '12px 16px', marginBottom: 16, fontSize: 13, fontWeight: 600, background: '#f0f9ff', borderColor: '#bae6fd', color: '#0369a1' }}>
+          {emailStatus}
+        </div>
+      )}
+
+      {stats && (
+        <div className="finance-kpi-grid" style={{ marginBottom: 20 }}>
+          <div className="finance-card">
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Événements Tracés</span>
+            <div className="finance-amount" style={{ color: '#0284c7' }}>{Number(stats.total).toLocaleString('fr-FR')}</div>
+            <span style={{ fontSize: 11, color: '#64748b' }}>Historique total enregistré</span>
+          </div>
+          <div className="finance-card">
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Activité (24h)</span>
+            <div className="finance-amount" style={{ color: '#16a34a' }}>{Number(stats.last_24h).toLocaleString('fr-FR')}</div>
+            <span style={{ fontSize: 11, color: '#64748b' }}>Opérations récentes</span>
+          </div>
+          <div className="finance-card">
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Action la plus fréquente</span>
+            <div className="finance-amount" style={{ fontSize: 16, color: '#7c3aed' }}>
+              {stats.by_action?.[0]?.action || '—'}
+            </div>
+            <span style={{ fontSize: 11, color: '#64748b' }}>
+              {stats.by_action?.[0]?.count ? `${stats.by_action[0].count} occurrences` : 'Aucune donnée'}
+            </span>
+          </div>
+        </div>
+      )}
+
+      <section className="panel data-panel">
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16, alignItems: 'center' }}>
+          <form
+            onSubmit={(e) => { e.preventDefault(); setPage(1); void loadLogs(); }}
+            style={{ display: 'flex', gap: 8, flex: 1, minWidth: 240 }}
+          >
+            <div style={{ position: 'relative', flex: 1 }}>
+              <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
+              <input
+                type="text"
+                className="input"
+                placeholder="Rechercher par action, utilisateur, détails..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ paddingLeft: 32, width: '100%' }}
+              />
+            </div>
+            <button type="submit" className="button button-secondary">Filtrer</button>
+          </form>
+
+          <select
+            className="select"
+            value={entityFilter}
+            onChange={(e) => { setEntityFilter(e.target.value); setPage(1); }}
+            style={{ minWidth: 180 }}
+          >
+            <option value="">Toutes les entités</option>
+            <option value="asset">Équipements (asset)</option>
+            <option value="affectation">Affectations</option>
+            <option value="ticket">Tickets IT</option>
+            <option value="user">Utilisateurs</option>
+            <option value="licence">Licences</option>
+            <option value="consommable">Consommables</option>
+          </select>
+        </div>
+
+        {loading ? (
+          <div className="loading-lines"><i /><i /><i /></div>
+        ) : (
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Date & Heure</th>
+                  <th>Auteur</th>
+                  <th>Action</th>
+                  <th>Cible</th>
+                  <th>Détails</th>
+                  <th>IP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {logs.map((log) => {
+                  const badge = actionBadgeStyle(String(log.action || ''));
+                  const author = [log.prenom, log.nom].filter(Boolean).join(' ') || String(log.username || (log.user_id ? `Compte #${log.user_id}` : 'Système'));
+                  const detailsStr = typeof log.details === 'object' && log.details ? JSON.stringify(log.details) : String(log.details || '—');
+                  return (
+                    <tr key={String(log.id)}>
+                      <td style={{ whiteSpace: 'nowrap', fontSize: 11, color: '#64748b' }}>
+                        <Clock size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                        {log.created_at ? new Date(String(log.created_at)).toLocaleString('fr-FR') : '—'}
+                      </td>
+                      <td>
+                        <strong>{author}</strong>
+                        {Boolean(log.role) && (
+                          <span style={{ marginLeft: 6, fontSize: 10, padding: '1px 6px', borderRadius: 6, background: '#f1f5f9', color: '#475569' }}>
+                            {String(log.role)}
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        <span style={{ padding: '3px 8px', borderRadius: 8, fontSize: 11, fontWeight: 700, background: badge.bg, color: badge.color }}>
+                          {String(log.action)}
+                        </span>
+                      </td>
+                      <td style={{ fontSize: 12 }}>
+                        {log.entity_type ? `${String(log.entity_type)} #${String(log.entity_id || '')}` : '—'}
+                      </td>
+                      <td style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11, fontFamily: 'ui-monospace, monospace', color: '#475569' }} title={detailsStr}>
+                        {detailsStr}
+                      </td>
+                      <td style={{ fontSize: 11, color: '#94a3b8' }}>{String(log.ip_address || '—')}</td>
+                    </tr>
+                  );
+                })}
+                {!logs.length && (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>
+                      <ShieldAlert size={28} style={{ display: 'block', margin: '0 auto 8px', opacity: 0.5 }} />
+                      Aucun événement enregistré pour ces critères.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+          <span style={{ fontSize: 12, color: '#64748b' }}>Page {page} / {totalPages}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="button button-secondary" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+              Précédent
+            </button>
+            <button type="button" className="button button-secondary" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+              Suivant
+            </button>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

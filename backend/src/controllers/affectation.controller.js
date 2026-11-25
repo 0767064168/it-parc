@@ -13,6 +13,7 @@ try {
 const { query, transaction } = require('../config/db');
 const { success, error, paginated } = require('../utils/response');
 const logger = require('../utils/logger');
+const { sendAffectationNotification } = require('../services/email.service');
 
 async function list(req, res) {
   try {
@@ -128,6 +129,23 @@ async function create(req, res) {
       [req.user.id, 'AFFECTATION_CREATE', 'asset', asset_id, JSON.stringify({ user_id: finalUserId, motif: finalMotif })]
     );
 
+    // Envoi de notification e-mail au collaborateur (non bloquant)
+    try {
+      const [uInfo] = await query('SELECT email, nom, prenom FROM utilisateurs WHERE id = ?', [finalUserId]);
+      const [aInfo] = await query('SELECT `Nom Machine` as asset_tag, marque, modele, serial_number FROM assets WHERE id = ?', [asset_id]);
+      if (uInfo?.email && aInfo) {
+        sendAffectationNotification({
+          userEmail: uInfo.email,
+          userName: `${uInfo.prenom || ''} ${uInfo.nom || ''}`.trim(),
+          assetTag: aInfo.asset_tag || `#${asset_id}`,
+          marque: aInfo.marque,
+          modele: aInfo.modele,
+          serialNumber: aInfo.serial_number,
+          dateAttribution: finalDate
+        }).catch(() => {});
+      }
+    } catch (_) {}
+
     return success(res, null, 'Affectation enregistrée avec succès', 201);
   } catch (err) {
     logger.error('Erreur create affectation:', err);
@@ -169,6 +187,13 @@ async function retrait(req, res) {
         [nouveau_statut, resolvedAssetId]
       );
     });
+
+    try {
+      await query(
+        'INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)',
+        [req.user?.id || null, 'AFFECTATION_RESTITUTION', 'asset', resolvedAssetId, JSON.stringify({ affectation_id: targetAffId, motif, nouveau_statut })]
+      );
+    } catch (_) {}
 
     return success(res, { asset_id: resolvedAssetId, affectation_id: targetAffId, statut: nouveau_statut }, 'Restitution enregistrée avec succès');
   } catch (err) {

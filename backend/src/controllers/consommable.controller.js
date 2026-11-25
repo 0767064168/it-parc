@@ -2,6 +2,24 @@
 const ConsommableModel = require('../models/consommable.model');
 const { success, error } = require('../utils/response');
 const logger = require('../utils/logger');
+const { query } = require('../config/db');
+const { sendStockCritiqueAlert } = require('../services/email.service');
+
+async function notifyLowStockEmail(item) {
+  if (!item || item.quantite > item.seuil_alerte) return;
+  try {
+    const admins = await query("SELECT email FROM auth_users WHERE role IN ('admin', 'technicien') AND actif = 1 AND email IS NOT NULL");
+    const adminEmails = admins.map(a => a.email).filter(Boolean);
+    if (adminEmails.length > 0) {
+      await sendStockCritiqueAlert({
+        adminEmails,
+        consommableNom: item.nom,
+        quantite: item.quantite,
+        seuil: item.seuil_alerte
+      });
+    }
+  } catch (_) {}
+}
 
 async function list(req, res) {
   try {
@@ -45,6 +63,7 @@ async function update(req, res) {
 
     await ConsommableModel.update(id, req.body);
     const updated = await ConsommableModel.findById(id);
+    notifyLowStockEmail(updated).catch(() => {});
     return success(res, updated, 'Consommable mis à jour avec succès');
   } catch (err) {
     logger.error('Erreur update consommable:', err);
@@ -77,7 +96,7 @@ async function adjustStock(req, res) {
     await ConsommableModel.adjustStock(id, parseInt(diff));
     const updated = await ConsommableModel.findById(id);
 
-    // Si stock bas, envoyer une notification websocket
+    // Si stock bas, envoyer une notification websocket + e-mail
     if (updated.quantite <= updated.seuil_alerte) {
       const io = req.app.get('io');
       if (io) {
@@ -86,6 +105,7 @@ async function adjustStock(req, res) {
           consommable: updated 
         });
       }
+      notifyLowStockEmail(updated).catch(() => {});
     }
 
     return success(res, updated, 'Stock mis à jour avec succès');

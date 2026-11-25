@@ -57,12 +57,13 @@ import {
   PenTool,
   Coins,
   ClipboardCheck,
+  ShieldAlert,
   type LucideIcon,
 } from 'lucide-react';
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiDownload, apiRequest } from './api';
 import { useAuth } from './auth';
-import { QrScannerModal, BatchQrLabelsModal, SignaturePadModal, AuditsPage } from './AuditAndTools';
+import { QrScannerModal, BatchQrLabelsModal, SignaturePadModal, AuditsPage, ActivityLogsPage } from './AuditAndTools';
 
 type DashboardData = {
   totaux?: Record<string, number>;
@@ -364,6 +365,7 @@ const navigation: NavigationItem[] = [
   { label: 'Audits & Inventaire', path: '/audits', icon: ClipboardCheck },
   { label: 'Base de connaissances', path: '/wiki', icon: BookOpen },
   { label: 'Gestion des Accès', path: '/users', icon: Users },
+  { label: 'Journal d\'Audit', path: '/logs', icon: ShieldAlert },
   { label: 'Rapports', path: '/reports', icon: ChartNoAxesCombined },
   { label: 'Recherche globale', path: '/search', icon: Search },
   { label: 'Import / Export', path: '/import-export', icon: ArrowDownToLine },
@@ -376,6 +378,7 @@ const pageTitles: Record<string, { title: string; subtitle: string; icon: Lucide
     icon: navigationIcon(path),
   }])),
   '/audits': { title: 'Audits & Inventaire', subtitle: 'Campagnes d\'inventaire physique et pointage terrain', icon: ClipboardCheck },
+  '/logs': { title: 'Journal d\'Audit', subtitle: 'Traçabilité des actions et alertes e-mail', icon: ShieldAlert },
   '/reports': { title: 'Rapports', subtitle: 'Indicateurs et analyses', icon: ChartNoAxesCombined },
   '/search': { title: 'Recherche globale', subtitle: 'Retrouver rapidement une information', icon: Search },
   '/import-export': { title: 'Import / Export', subtitle: 'Échanger les données du parc', icon: ArrowDownToLine },
@@ -494,7 +497,7 @@ function AppLayout() {
   const displayName = [user?.prenom, user?.nom].filter(Boolean).join(' ') || user?.username || 'Utilisateur';
   const role = (user?.role ?? 'lecteur').toLowerCase();
   const visibleNavigation = navigation.filter((item) => {
-    if (item.path === '/users' || item.path === '/licences' || item.path === '/import-export') {
+    if (item.path === '/users' || item.path === '/licences' || item.path === '/import-export' || item.path === '/logs') {
       return role === 'admin' || role === 'technicien';
     }
     return true;
@@ -714,6 +717,7 @@ function AppLayout() {
               <Route key={path} path={path} element={<ModulePage path={path} />} />
             ))}
             <Route path="/audits" element={<AuditsPage />} />
+            <Route path="/logs" element={<ActivityLogsPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/import-export" element={<ImportExportPage />} />

@@ -254,8 +254,129 @@ async function sendTicketStatusUpdate({ ticket, creator, userEmail, oldStatus, n
   }
 }
 
+/**
+ * Notification lors de l'attribution d'un équipement à un collaborateur
+ */
+async function sendAffectationNotification({ userEmail, userName, assetTag, marque, modele, serialNumber, dateAttribution }) {
+  if (!userEmail) return false;
+  const subject = `[Attribution Matériel IT] Équipement ${assetTag} affecté à votre compte`;
+  const dateStr = dateAttribution ? new Date(dateAttribution).toLocaleDateString('fr-FR') : new Date().toLocaleDateString('fr-FR');
+
+  const html = `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #F8FAFC; padding: 40px 10px; color: #1E293B;">
+      <div style="max-width: 600px; margin: 0 auto; background: #FFFFFF; border-radius: 16px; overflow: hidden; border: 1px solid #E2E8F0;">
+        <div style="background-color: #0F172A; padding: 28px; text-align: center;">
+          <h2 style="color: #FFFFFF; margin: 0; font-size: 20px;">Direction IT Bouaké</h2>
+          <p style="color: #38BDF8; margin: 4px 0 0 0; font-size: 13px;">Attribution de Matériel Informatique</p>
+        </div>
+        <div style="padding: 28px 36px;">
+          <p style="font-size: 15px;">Bonjour <strong>${userName}</strong>,</p>
+          <p style="font-size: 14px; color: #334155; line-height: 1.5;">
+            La Direction IT vous confirme l'attribution d'un équipement informatique en date du <strong>${dateStr}</strong> :
+          </p>
+          <table style="width: 100%; border-collapse: collapse; margin: 18px 0; background: #F8FAFC; border-radius: 8px;">
+            <tr>
+              <td style="padding: 10px 14px; color: #64748B; font-size: 13px;">Nom Machine / Tag</td>
+              <td style="padding: 10px 14px; color: #0F172A; font-weight: 700; font-size: 13px;">${assetTag}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 14px; color: #64748B; font-size: 13px;">Modèle</td>
+              <td style="padding: 10px 14px; color: #0F172A; font-size: 13px;">${marque || ''} ${modele || ''}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 14px; color: #64748B; font-size: 13px;">N° de Série</td>
+              <td style="padding: 10px 14px; color: #0F172A; font-family: monospace; font-size: 13px;">${serialNumber || 'N/A'}</td>
+            </tr>
+          </table>
+          <p style="font-size: 12.5px; color: #64748B;">
+            Conformément à la charte informatique, vous êtes responsable de la bonne garde de ce matériel.
+          </p>
+        </div>
+        <div style="background-color: #F8FAFC; padding: 16px; text-align: center; border-top: 1px solid #E2E8F0; font-size: 12px; color: #94A3B8;">
+          Direction IT Bouaké • Notification automatique
+        </div>
+      </div>
+    </div>
+  `;
+
+  const text = `Bonjour ${userName},\nL'équipement ${assetTag} (${marque || ''} ${modele || ''}, S/N: ${serialNumber || 'N/A'}) vous a été attribué le ${dateStr}.`;
+  return sendMail({ to: userEmail, subject, html, text });
+}
+
+/**
+ * Alerte de stock critique sur un consommable
+ */
+async function sendStockCritiqueAlert({ adminEmails, consommableNom, quantite, seuil }) {
+  if (!adminEmails || !adminEmails.length) return false;
+  const subject = `[ALERTE STOCK CRITIQUE] ${consommableNom} (${quantite} restant(s))`;
+
+  const html = `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #F8FAFC; padding: 40px 10px; color: #1E293B;">
+      <div style="max-width: 600px; margin: 0 auto; background: #FFFFFF; border-radius: 16px; overflow: hidden; border: 1px solid #FECACA;">
+        <div style="background-color: #991B1B; padding: 24px; text-align: center;">
+          <h2 style="color: #FFFFFF; margin: 0; font-size: 19px;">⚠️ Alerte Stock Critique</h2>
+          <p style="color: #FECACA; margin: 4px 0 0 0; font-size: 13px;">Réapprovisionnement consommable requis</p>
+        </div>
+        <div style="padding: 28px 36px;">
+          <p style="font-size: 14px; color: #334155;">
+            Le consommable <strong>${consommableNom}</strong> a atteint son seuil critique de sécurité :
+          </p>
+          <div style="background: #FEF2F2; border-left: 4px solid #EF4444; padding: 14px; border-radius: 6px; margin: 16px 0;">
+            <div style="font-size: 14px; color: #991B1B;"><strong>Quantité actuelle :</strong> ${quantite} unité(s)</div>
+            <div style="font-size: 13px; color: #B91C1C; margin-top: 4px;"><strong>Seuil d'alerte configuré :</strong> ${seuil} unité(s)</div>
+          </div>
+          <p style="font-size: 13px; color: #64748B;">Merci de planifier une commande fournisseur dans les plus brefs délais.</p>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const text = `ALERTE STOCK CRITIQUE : ${consommableNom} est à ${quantite} unité(s) (seuil : ${seuil}).`;
+  return sendMail({ to: adminEmails.join(','), subject, html, text });
+}
+
+/**
+ * Rapport d'échéance (Licences & Garanties < 30 jours)
+ */
+async function sendExpiringAlertsDigest({ adminEmails, licencesExpirant, garantiesExpirant }) {
+  if (!adminEmails || !adminEmails.length) return false;
+  if ((!licencesExpirant || !licencesExpirant.length) && (!garantiesExpirant || !garantiesExpirant.length)) return false;
+
+  const subject = `[Veille Parc IT] ${licencesExpirant.length} licence(s) et ${garantiesExpirant.length} garantie(s) arrivent à échéance`;
+  const html = `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; background-color: #F8FAFC; padding: 40px 10px; color: #1E293B;">
+      <div style="max-width: 600px; margin: 0 auto; background: #FFFFFF; border-radius: 16px; overflow: hidden; border: 1px solid #E2E8F0;">
+        <div style="background-color: #0F172A; padding: 24px; text-align: center;">
+          <h2 style="color: #FFFFFF; margin: 0; font-size: 19px;">📅 Veille Échéances Parc IT</h2>
+          <p style="color: #F59E0B; margin: 4px 0 0 0; font-size: 13px;">Renouvellements à prévoir sous 30 jours</p>
+        </div>
+        <div style="padding: 24px 32px;">
+          ${licencesExpirant.length > 0 ? `
+            <h3 style="font-size: 15px; color: #0F172A; border-bottom: 1px solid #E2E8F0; padding-bottom: 6px;">🔑 Licences Logicielles (${licencesExpirant.length})</h3>
+            <ul style="font-size: 13px; color: #334155; padding-left: 18px;">
+              ${licencesExpirant.map(l => `<li><strong>${l.nom}</strong> (${l.editeur || 'Éditeur'}) — Expire le ${new Date(l.date_expiration).toLocaleDateString('fr-FR')}</li>`).join('')}
+            </ul>
+          ` : ''}
+          ${garantiesExpirant.length > 0 ? `
+            <h3 style="font-size: 15px; color: #0F172A; border-bottom: 1px solid #E2E8F0; padding-bottom: 6px; margin-top: 20px;">🛡️ Garanties Matérielles (${garantiesExpirant.length})</h3>
+            <ul style="font-size: 13px; color: #334155; padding-left: 18px;">
+              ${garantiesExpirant.map(g => `<li><strong>${g.asset_tag}</strong> (${g.marque || ''} ${g.modele || ''}) — Fin le ${new Date(g.fin_garantie).toLocaleDateString('fr-FR')}</li>`).join('')}
+            </ul>
+          ` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+
+  const text = `Veille Parc IT : ${licencesExpirant.length} licence(s) et ${garantiesExpirant.length} garantie(s) arrivent à échéance sous 30 jours.`;
+  return sendMail({ to: adminEmails.join(','), subject, html, text });
+}
+
 module.exports = {
   sendMail,
   sendNewTicketAlert,
-  sendTicketStatusUpdate
+  sendTicketStatusUpdate,
+  sendAffectationNotification,
+  sendStockCritiqueAlert,
+  sendExpiringAlertsDigest
 };
