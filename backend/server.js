@@ -219,7 +219,8 @@ app.get('/api/health', async (req, res) => {
       environment: process.env.NODE_ENV,
     });
   } catch (err) {
-    res.status(503).json({ success: false, status: 'DB_ERROR', error: err.message });
+    logger.error('Erreur de santé DB:', err);
+    res.status(503).json({ success: false, status: 'DB_ERROR', error: 'Base de données indisponible' });
   }
 });
 

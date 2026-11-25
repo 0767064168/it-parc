@@ -88,7 +88,7 @@ async function login(req, res) {
     }, 'Connexion réussie');
   } catch (err) {
     logger.error('Erreur login:', err);
-    return error(res, `Erreur lors de la connexion: ${err.message}`, 500);
+    return error(res, 'Erreur lors de la connexion', 500);
   }
 }
 
