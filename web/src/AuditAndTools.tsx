@@ -21,6 +21,8 @@ import {
   AlertTriangle,
   Ticket,
   UserCheck,
+  Settings,
+  Save,
 } from 'lucide-react';
 import { apiDownload, apiRequest } from './api';
 import { useAuth } from './auth';
@@ -1546,6 +1548,217 @@ export function MonEspacePage() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// 7. CENTRE DE PARAMÈTRES & CONFIGURATION DSI (/settings)
+// ============================================================================
+export function SettingsPage() {
+  const { token, user } = useAuth();
+  const isAdmin = (user?.role ?? '').toLowerCase() === 'admin';
+  const [settings, setSettings] = useState<Record<string, string>>({
+    organisation_nom: 'Direction IT Bouaké',
+    devise: 'XOF',
+    amortissement_mois: '36',
+    alerte_licences_jours: '30',
+    alerte_garanties_jours: '60',
+    email_notifications_auto: 'true',
+  });
+  const [smtpInfo, setSmtpInfo] = useState<{ enabled: boolean; host: string }>({ enabled: false, host: '' });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testEmail, setTestEmail] = useState(user?.email || '');
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [feedback, setFeedback] = useState('');
+
+  useEffect(() => {
+    apiRequest<{ settings: Record<string, string>; smtp_enabled: boolean; smtp_host: string }>('/settings', { token })
+      .then((res) => {
+        if (res.settings) setSettings(res.settings);
+        setSmtpInfo({ enabled: Boolean(res.smtp_enabled), host: res.smtp_host || 'Mode Simulation' });
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [token]);
+
+  async function handleSave(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setFeedback('');
+    try {
+      await apiRequest('/settings', {
+        token,
+        method: 'PUT',
+        body: { settings },
+      });
+      setFeedback('✅ Paramètres système enregistrés avec succès.');
+    } catch (err: unknown) {
+      setFeedback(err instanceof Error ? `❌ ${err.message}` : '❌ Erreur lors de la sauvegarde.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleTestEmail(e: FormEvent) {
+    e.preventDefault();
+    if (!testEmail.trim()) return;
+    setTestingEmail(true);
+    setFeedback('');
+    try {
+      const res = await apiRequest<{ mode: string; to: string }>('/settings/test-email', {
+        token,
+        method: 'POST',
+        body: { email: testEmail.trim() },
+      });
+      setFeedback(`📧 Test e-mail exécuté (${res.mode}) vers ${res.to}.`);
+    } catch (err: unknown) {
+      setFeedback(err instanceof Error ? `❌ ${err.message}` : '❌ Échec du test e-mail.');
+    } finally {
+      setTestingEmail(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">ADMINISTRATION DSI</span>
+          <h1>Paramètres & Configuration Système</h1>
+          <p>Règles d'amortissement comptable, seuils d'alertes et passerelle e-mail SMTP.</p>
+        </div>
+      </div>
+
+      {feedback && (
+        <div className="panel" style={{ padding: '12px 16px', marginBottom: 18, background: '#f0f9ff', borderColor: '#bae6fd', color: '#0369a1', fontWeight: 600, fontSize: 13 }}>
+          {feedback}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="loading-lines"><i /><i /></div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
+          <section className="panel pro-card">
+            <div className="panel-heading">
+              <div>
+                <h2 style={{ fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Settings size={18} color="#2563eb" /> Règles Métier & Seuils
+                </h2>
+                <p style={{ fontSize: 11 }}>Paramètres globaux appliqués au parc informatique</p>
+              </div>
+            </div>
+            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 16 }}>
+              <div>
+                <label className="field-label">Nom de l'entité / Direction</label>
+                <input
+                  type="text"
+                  className="input"
+                  disabled={!isAdmin}
+                  value={settings.organisation_nom || ''}
+                  onChange={(e) => setSettings((s) => ({ ...s, organisation_nom: e.target.value }))}
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label className="field-label">Durée d'amortissement (mois)</label>
+                  <select
+                    className="select"
+                    disabled={!isAdmin}
+                    value={settings.amortissement_mois || '36'}
+                    onChange={(e) => setSettings((s) => ({ ...s, amortissement_mois: e.target.value }))}
+                  >
+                    <option value="24">24 mois (2 ans)</option>
+                    <option value="36">36 mois (3 ans)</option>
+                    <option value="48">48 mois (4 ans)</option>
+                    <option value="60">60 mois (5 ans)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="field-label">Devise comptable</label>
+                  <select
+                    className="select"
+                    disabled={!isAdmin}
+                    value={settings.devise || 'XOF'}
+                    onChange={(e) => setSettings((s) => ({ ...s, devise: e.target.value }))}
+                  >
+                    <option value="XOF">XOF (FCFA)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="USD">USD ($)</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label className="field-label">Alerte Licences (jours avant)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    disabled={!isAdmin}
+                    min={7}
+                    max={180}
+                    value={settings.alerte_licences_jours || '30'}
+                    onChange={(e) => setSettings((s) => ({ ...s, alerte_licences_jours: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Alerte Garanties (jours avant)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    disabled={!isAdmin}
+                    min={7}
+                    max={180}
+                    value={settings.alerte_garanties_jours || '60'}
+                    onChange={(e) => setSettings((s) => ({ ...s, alerte_garanties_jours: e.target.value }))}
+                  />
+                </div>
+              </div>
+              {isAdmin && (
+                <button type="submit" className="button button-primary" disabled={saving} style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <Save size={15} /> {saving ? 'Enregistrement...' : 'Enregistrer les paramètres'}
+                </button>
+              )}
+            </form>
+          </section>
+
+          <section className="panel pro-card">
+            <div className="panel-heading">
+              <div>
+                <h2 style={{ fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Mail size={18} color="#16a34a" /> Passerelle E-mail & Test SMTP
+                </h2>
+                <p style={{ fontSize: 11 }}>État actuel du serveur d'envoi de notifications</p>
+              </div>
+            </div>
+            <div style={{ marginTop: 16, padding: 14, borderRadius: 10, background: smtpInfo.enabled ? '#f0fdf4' : '#fffbeb', border: `1px solid ${smtpInfo.enabled ? '#bbf7d0' : '#fde68a'}` }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: smtpInfo.enabled ? '#166534' : '#92400e' }}>
+                {smtpInfo.enabled ? '🟢 SMTP Actif (Production)' : '🟡 Mode Simulation (Logs Console)'}
+              </div>
+              <div style={{ fontSize: 12, color: '#475569', marginTop: 4 }}>
+                Hôte SMTP : <code>{smtpInfo.host}</code>
+              </div>
+            </div>
+            <form onSubmit={handleTestEmail} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 18 }}>
+              <div>
+                <label className="field-label">Envoyer un e-mail de vérification à :</label>
+                <input
+                  type="email"
+                  className="input"
+                  required
+                  placeholder="admin@entreprise.ci"
+                  value={testEmail}
+                  onChange={(e) => setTestEmail(e.target.value)}
+                />
+              </div>
+              <button type="submit" className="button button-secondary" disabled={!isAdmin || testingEmail} style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Mail size={15} /> {testingEmail ? 'Envoi en cours...' : 'Tester l’envoi E-mail'}
+              </button>
+            </form>
+          </section>
         </div>
       )}
     </div>

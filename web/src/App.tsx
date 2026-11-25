@@ -64,7 +64,7 @@ import {
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiDownload, apiRequest } from './api';
 import { useAuth } from './auth';
-import { QrScannerModal, BatchQrLabelsModal, SignaturePadModal, AuditsPage, ActivityLogsPage, MonEspacePage } from './AuditAndTools';
+import { QrScannerModal, BatchQrLabelsModal, SignaturePadModal, AuditsPage, ActivityLogsPage, MonEspacePage, SettingsPage } from './AuditAndTools';
 import { getOfflineQueue, syncOfflineQueue, OFFLINE_QUEUE_EVENT } from './offlineQueue';
 
 type DashboardData = {
@@ -369,6 +369,7 @@ const navigation: NavigationItem[] = [
   { label: 'Base de connaissances', path: '/wiki', icon: BookOpen },
   { label: 'Gestion des Accès', path: '/users', icon: Users },
   { label: 'Journal d\'Audit', path: '/logs', icon: ShieldAlert },
+  { label: 'Paramètres DSI', path: '/settings', icon: Settings },
   { label: 'Rapports', path: '/reports', icon: ChartNoAxesCombined },
   { label: 'Recherche globale', path: '/search', icon: Search },
   { label: 'Import / Export', path: '/import-export', icon: ArrowDownToLine },
@@ -383,6 +384,7 @@ const pageTitles: Record<string, { title: string; subtitle: string; icon: Lucide
   '/mes-equipements': { title: 'Mon Espace IT', subtitle: 'Mes équipements attribués et signalement rapide', icon: UserCheck },
   '/audits': { title: 'Audits & Inventaire', subtitle: 'Campagnes d\'inventaire physique et pointage terrain', icon: ClipboardCheck },
   '/logs': { title: 'Journal d\'Audit', subtitle: 'Traçabilité des actions et alertes e-mail', icon: ShieldAlert },
+  '/settings': { title: 'Paramètres DSI', subtitle: 'Règles d\'amortissement, seuils et messagerie SMTP', icon: Settings },
   '/reports': { title: 'Rapports', subtitle: 'Indicateurs et analyses', icon: ChartNoAxesCombined },
   '/search': { title: 'Recherche globale', subtitle: 'Retrouver rapidement une information', icon: Search },
   '/import-export': { title: 'Import / Export', subtitle: 'Échanger les données du parc', icon: ArrowDownToLine },
@@ -501,7 +503,7 @@ function AppLayout() {
   const displayName = [user?.prenom, user?.nom].filter(Boolean).join(' ') || user?.username || 'Utilisateur';
   const role = (user?.role ?? 'lecteur').toLowerCase();
   const visibleNavigation = navigation.filter((item) => {
-    if (item.path === '/users' || item.path === '/licences' || item.path === '/import-export' || item.path === '/logs') {
+    if (item.path === '/users' || item.path === '/licences' || item.path === '/import-export' || item.path === '/logs' || item.path === '/settings') {
       return role === 'admin' || role === 'technicien';
     }
     return true;
@@ -750,6 +752,7 @@ function AppLayout() {
             <Route path="/mes-equipements" element={<MonEspacePage />} />
             <Route path="/audits" element={<AuditsPage />} />
             <Route path="/logs" element={<ActivityLogsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/import-export" element={<ImportExportPage />} />
@@ -2928,6 +2931,86 @@ function ReportsPage() {
               </div>
             )}
           </section>
+
+          {/* Indicateurs SLA & Performance Support IT */}
+          {Boolean(report?.sla_stats) && (
+            <section className="panel pro-card" style={{ gridColumn: '1 / -1' }}>
+              <div className="panel-heading">
+                <div>
+                  <h2 style={{ fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Ticket size={18} color="#2563eb" /> Performance Support IT & Respect des SLA
+                  </h2>
+                  <p style={{ fontSize: 11 }}>Taux de résolution dans les délais contractuels et charge par intervenant</p>
+                </div>
+              </div>
+              <div className="finance-kpi-grid" style={{ marginTop: 16 }}>
+                <div className="finance-card">
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Taux de Respect SLA</span>
+                  <div className="finance-amount" style={{ color: Number((report?.sla_stats as Record<string, unknown>)?.taux_respect_sla ?? 100) >= 85 ? '#16a34a' : '#d97706' }}>
+                    {Number((report?.sla_stats as Record<string, unknown>)?.taux_respect_sla ?? 100)}%
+                  </div>
+                  <span style={{ fontSize: 11, color: '#64748b' }}>Tickets résolus dans les délais</span>
+                </div>
+                <div className="finance-card">
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Tickets Résolus</span>
+                  <div className="finance-amount" style={{ color: '#0284c7' }}>
+                    {Number((report?.sla_stats as Record<string, unknown>)?.resolus ?? 0)} / {Number((report?.sla_stats as Record<string, unknown>)?.total_tickets ?? 0)}
+                  </div>
+                  <span style={{ fontSize: 11, color: '#64748b' }}>Total traité sur l'ensemble</span>
+                </div>
+                <div className="finance-card">
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Hors Délai (Dépassement)</span>
+                  <div className="finance-amount" style={{ color: '#dc2626' }}>
+                    {Number((report?.sla_stats as Record<string, unknown>)?.hors_sla ?? 0)}
+                  </div>
+                  <span style={{ fontSize: 11, color: '#64748b' }}>Tickets ayant dépassé le SLA</span>
+                </div>
+                <div className="finance-card">
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Temps Moyen Résolution</span>
+                  <div className="finance-amount" style={{ color: '#7c3aed' }}>
+                    {Number((report?.sla_stats as Record<string, unknown>)?.temps_moyen_resolution_min ?? 0)} min
+                  </div>
+                  <span style={{ fontSize: 11, color: '#64748b' }}>Durée moyenne de prise en charge</span>
+                </div>
+              </div>
+              {extractRows(report?.tickets_by_technicien).length > 0 && (
+                <div className="table-scroll" style={{ marginTop: 12 }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Technicien / Intervenant</th>
+                        <th>Tickets Assignés</th>
+                        <th>Tickets Résolus</th>
+                        <th>Taux de Clôture</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {extractRows(report?.tickets_by_technicien).map((tech, idx) => {
+                        const tot = Number(tech.total || 0);
+                        const res = Number(tech.resolus || 0);
+                        const pct = tot > 0 ? Math.round((res / tot) * 100) : 0;
+                        return (
+                          <tr key={idx}>
+                            <td><strong>{String(tech.technicien)}</strong></td>
+                            <td>{tot}</td>
+                            <td>{res}</td>
+                            <td style={{ minWidth: 140 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div className="pro-bar-track" style={{ flex: 1 }}>
+                                  <span style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #3b82f6, #10b981)' }} />
+                                </div>
+                                <span style={{ fontSize: 11, fontWeight: 700 }}>{pct}%</span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
 
           {/* Pilotage Financier, Amortissement & Budget N+1 */}
           <section className="panel pro-card" style={{ gridColumn: '1 / -1' }}>

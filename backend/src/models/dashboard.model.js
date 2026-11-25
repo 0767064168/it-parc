@@ -183,12 +183,50 @@ async function getAdvancedReports() {
     SELECT id, nom, quantite, seuil_alerte FROM consommables
   `);
 
+  let sla_stats = { total_tickets: 0, resolus: 0, dans_sla: 0, hors_sla: 0, taux_respect_sla: 100, temps_moyen_resolution_min: 0 };
+  let tickets_by_technicien = [];
+  try {
+    const [slaRow] = await query(`
+      SELECT
+        COUNT(*) as total_tickets,
+        SUM(CASE WHEN statut IN ('resolu', 'ferme') THEN 1 ELSE 0 END) as resolus,
+        SUM(CASE WHEN statut IN ('resolu', 'ferme') AND (sla_deadline IS NULL OR closed_at IS NULL OR closed_at <= sla_deadline) THEN 1 ELSE 0 END) as dans_sla,
+        SUM(CASE WHEN (sla_deadline IS NOT NULL AND ((closed_at IS NOT NULL AND closed_at > sla_deadline) OR (statut NOT IN ('resolu', 'ferme', 'annule') AND NOW() > sla_deadline))) THEN 1 ELSE 0 END) as hors_sla,
+        ROUND(AVG(CASE WHEN temps_resolution_min > 0 THEN temps_resolution_min ELSE NULL END), 0) as temps_moyen_resolution_min
+      FROM tickets
+    `);
+    if (slaRow) {
+      const resolus = parseInt(slaRow.resolus || 0, 10);
+      const dansSla = parseInt(slaRow.dans_sla || 0, 10);
+      sla_stats = {
+        total_tickets: parseInt(slaRow.total_tickets || 0, 10),
+        resolus,
+        dans_sla: dansSla,
+        hors_sla: parseInt(slaRow.hors_sla || 0, 10),
+        taux_respect_sla: resolus > 0 ? Math.round((dansSla / resolus) * 100) : 100,
+        temps_moyen_resolution_min: parseInt(slaRow.temps_moyen_resolution_min || 0, 10),
+      };
+    }
+    tickets_by_technicien = await query(`
+      SELECT COALESCE(CONCAT(u.prenom, ' ', u.nom), 'Non assigné') as technicien,
+        COUNT(t.id) as total,
+        SUM(CASE WHEN t.statut IN ('resolu', 'ferme') THEN 1 ELSE 0 END) as resolus
+      FROM tickets t
+      LEFT JOIN auth_users u ON u.id = t.technicien_id
+      GROUP BY u.id, u.prenom, u.nom
+      ORDER BY total DESC
+      LIMIT 8
+    `);
+  } catch (_) {}
+
   return {
     assets_by_type,
     assets_by_statut,
     maintenances_costs,
     licences_utilisation,
-    consommables_stock
+    consommables_stock,
+    sla_stats,
+    tickets_by_technicien
   };
 }
 
