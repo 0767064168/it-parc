@@ -5,7 +5,7 @@
 
 const DashboardModel = require('../models/dashboard.model');
 const { query } = require('../config/db');
-const { sendExpiringAlertsDigest } = require('../services/email.service');
+const { sendExpiringAlertsDigest, sendNewTicketAlert } = require('../services/email.service');
 const { success, error } = require('../utils/response');
 const logger = require('../utils/logger');
 
@@ -77,4 +77,98 @@ async function triggerExpiringAlertsEmail(req, res) {
   }
 }
 
-module.exports = { getStats, getAdvancedReports, getAmortissement, triggerExpiringAlertsEmail };
+async function getMonEspace(req, res) {
+  try {
+    const userEmail = req.user?.email || '';
+    const userNom = req.user?.nom || '';
+    const userPrenom = req.user?.prenom || '';
+
+    // Équipements affectés activement à ce collaborateur (correspondance par email ou nom+prénom)
+    const equipements = await query(`
+      SELECT af.id as affectation_id, af.date_attribution, af.motif,
+        a.id as asset_id, a.\`Nom Machine\` as asset_tag, a.marque, a.modele, a.type,
+        a.serial_number, a.statut, a.site, a.departement,
+        s.os, s.ram, s.stockage, s.cpu
+      FROM affectations af
+      JOIN assets a ON a.id = af.asset_id AND a.deleted_at IS NULL
+      JOIN utilisateurs u ON u.id = af.user_id
+      LEFT JOIN specs s ON s.asset_id = a.id
+      WHERE af.actif = 1
+        AND (
+          (? <> '' AND LOWER(u.email) = LOWER(?))
+          OR (? <> '' AND ? <> '' AND LOWER(u.nom) = LOWER(?) AND LOWER(u.prenom) = LOWER(?))
+        )
+      ORDER BY af.date_attribution DESC
+    `, [userEmail, userEmail, userNom, userPrenom, userNom, userPrenom]);
+
+    // Tickets récents créés par cet utilisateur
+    const tickets = await query(`
+      SELECT t.id, t.numero, t.titre, t.type, t.priorite, t.statut, t.created_at, t.updated_at,
+        a.\`Nom Machine\` as asset_tag, a.marque, a.modele
+      FROM tickets t
+      LEFT JOIN assets a ON a.id = t.asset_id
+      WHERE t.createur_id = ?
+      ORDER BY t.created_at DESC
+      LIMIT 15
+    `, [req.user.id]);
+
+    return success(res, { equipements, tickets }, 'Espace collaborateur');
+  } catch (err) {
+    logger.error('Erreur getMonEspace:', err);
+    return error(res, 'Erreur lors du chargement de votre espace', 500);
+  }
+}
+
+async function reportMonIncident(req, res) {
+  try {
+    const { asset_id, titre, description, priorite = 'moyenne' } = req.body;
+    if (!titre || !titre.trim() || !description || !description.trim()) {
+      return error(res, 'Le titre et la description de l\'incident sont obligatoires', 400);
+    }
+
+    const validPriorite = ['critique', 'haute', 'moyenne', 'basse'].includes(priorite) ? priorite : 'moyenne';
+    const year = new Date().getFullYear();
+    const rand = String(Math.floor(1000 + Math.random() * 9000));
+    const numero = `TKT-${year}-${rand}`;
+
+    let site = null;
+    if (asset_id) {
+      const [assetRow] = await query('SELECT site FROM assets WHERE id = ?', [parseInt(asset_id, 10)]);
+      site = assetRow?.site || null;
+    }
+
+    const insertRes = await query(`
+      INSERT INTO tickets (numero, titre, description, type, priorite, statut, asset_id, createur_id, site)
+      VALUES (?, ?, ?, 'incident', ?, 'ouvert', ?, ?, ?) RETURNING id
+    `, [numero, titre.trim(), description.trim(), validPriorite, asset_id ? parseInt(asset_id, 10) : null, req.user.id, site]);
+
+    const newTicketId = insertRes?.[0]?.id || insertRes?.insertId;
+
+    try {
+      await query(
+        'INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)',
+        [req.user.id, 'PORTAL_INCIDENT_REPORT', 'ticket', newTicketId || null, JSON.stringify({ numero, asset_id, titre: titre.trim(), priorite: validPriorite })]
+      );
+    } catch (_) {}
+
+    // Notification e-mail aux admins/techniciens (non bloquant)
+    try {
+      const admins = await query("SELECT email FROM auth_users WHERE role IN ('admin', 'technicien') AND actif = 1 AND email IS NOT NULL");
+      const itEmails = admins.map(a => a.email).filter(Boolean);
+      if (itEmails.length > 0) {
+        sendNewTicketAlert({
+          ticket: { id: newTicketId, numero, titre: titre.trim(), description: description.trim(), priorite: validPriorite, type: 'incident', created_at: new Date() },
+          creator: { nom: req.user.nom || '', prenom: req.user.prenom || '', username: req.user.username },
+          itEmails
+        }).catch(() => {});
+      }
+    } catch (_) {}
+
+    return success(res, { id: newTicketId, numero, statut: 'ouvert' }, 'Incident signalé à l\'équipe IT avec succès', 201);
+  } catch (err) {
+    logger.error('Erreur reportMonIncident:', err);
+    return error(res, 'Erreur lors du signalement de l\'incident', 500);
+  }
+}
+
+module.exports = { getStats, getAdvancedReports, getAmortissement, triggerExpiringAlertsEmail, getMonEspace, reportMonIncident };

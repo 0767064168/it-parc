@@ -58,12 +58,14 @@ import {
   Coins,
   ClipboardCheck,
   ShieldAlert,
+  UserCheck,
   type LucideIcon,
 } from 'lucide-react';
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { apiDownload, apiRequest } from './api';
 import { useAuth } from './auth';
-import { QrScannerModal, BatchQrLabelsModal, SignaturePadModal, AuditsPage, ActivityLogsPage } from './AuditAndTools';
+import { QrScannerModal, BatchQrLabelsModal, SignaturePadModal, AuditsPage, ActivityLogsPage, MonEspacePage } from './AuditAndTools';
+import { getOfflineQueue, syncOfflineQueue, OFFLINE_QUEUE_EVENT } from './offlineQueue';
 
 type DashboardData = {
   totaux?: Record<string, number>;
@@ -356,6 +358,7 @@ const modules: Record<string, ModuleDefinition> = {
 
 const navigation: NavigationItem[] = [
   { label: 'Tableau de bord', path: '/', icon: LayoutDashboard },
+  { label: 'Mon Espace IT', path: '/mes-equipements', icon: UserCheck },
   { label: 'Inventaire du parc', path: '/assets', icon: Laptop },
   { label: 'Affectations', path: '/affectations', icon: ArrowLeftRight },
   { label: 'Tickets IT', path: '/tickets', icon: Ticket },
@@ -377,6 +380,7 @@ const pageTitles: Record<string, { title: string; subtitle: string; icon: Lucide
     subtitle: module.subtitle,
     icon: navigationIcon(path),
   }])),
+  '/mes-equipements': { title: 'Mon Espace IT', subtitle: 'Mes équipements attribués et signalement rapide', icon: UserCheck },
   '/audits': { title: 'Audits & Inventaire', subtitle: 'Campagnes d\'inventaire physique et pointage terrain', icon: ClipboardCheck },
   '/logs': { title: 'Journal d\'Audit', subtitle: 'Traçabilité des actions et alertes e-mail', icon: ShieldAlert },
   '/reports': { title: 'Rapports', subtitle: 'Indicateurs et analyses', icon: ChartNoAxesCombined },
@@ -509,6 +513,8 @@ function AppLayout() {
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [alertsSummary, setAlertsSummary] = useState<DashboardData | null>(null);
+  const [pendingOfflineCount, setPendingOfflineCount] = useState<number>(() => getOfflineQueue().length);
+  const [syncingOffline, setSyncingOffline] = useState(false);
 
   useEffect(() => {
     apiRequest<DashboardData>('/dashboard/stats', { token })
@@ -536,7 +542,14 @@ function AppLayout() {
   }, [location.pathname]);
 
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
+    const refreshQueueCount = () => setPendingOfflineCount(getOfflineQueue().length);
+    const handleOnline = () => {
+      setIsOnline(true);
+      if (token && getOfflineQueue().length > 0) {
+        setSyncingOffline(true);
+        void syncOfflineQueue(token).finally(() => setSyncingOffline(false));
+      }
+    };
     const handleOffline = () => setIsOnline(false);
     const handleInstallPrompt = (event: Event) => {
       event.preventDefault();
@@ -545,12 +558,14 @@ function AppLayout() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     window.addEventListener('beforeinstallprompt', handleInstallPrompt);
+    window.addEventListener(OFFLINE_QUEUE_EVENT, refreshQueueCount);
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('beforeinstallprompt', handleInstallPrompt);
+      window.removeEventListener(OFFLINE_QUEUE_EVENT, refreshQueueCount);
     };
-  }, []);
+  }, [token]);
 
   async function installApp() {
     if (!installPrompt) return;
@@ -609,6 +624,22 @@ function AppLayout() {
               {darkMode ? <Sun size={17} /> : <Moon size={17} />}
             </button>
             <span className={`environment-pill ${isOnline ? '' : 'offline'}`}><span /> {isOnline ? 'En ligne' : 'Hors ligne'}</span>
+            {pendingOfflineCount > 0 && (
+              <button
+                type="button"
+                className="button button-secondary"
+                disabled={!isOnline || syncingOffline}
+                onClick={() => {
+                  setSyncingOffline(true);
+                  void syncOfflineQueue(token).finally(() => setSyncingOffline(false));
+                }}
+                title={isOnline ? 'Synchroniser les actions hors-ligne maintenant' : 'En attente de connexion réseau'}
+                style={{ padding: '4px 10px', fontSize: 11, height: 28, background: '#fef3c7', color: '#92400e', borderColor: '#fde68a', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+              >
+                <RefreshCw size={12} />
+                <span>{syncingOffline ? 'Sync...' : `${pendingOfflineCount} en attente`}</span>
+              </button>
+            )}
             <button
               type="button"
               className="icon-button"
@@ -716,6 +747,7 @@ function AppLayout() {
             {Object.keys(modules).map((path) => (
               <Route key={path} path={path} element={<ModulePage path={path} />} />
             ))}
+            <Route path="/mes-equipements" element={<MonEspacePage />} />
             <Route path="/audits" element={<AuditsPage />} />
             <Route path="/logs" element={<ActivityLogsPage />} />
             <Route path="/search" element={<SearchPage />} />

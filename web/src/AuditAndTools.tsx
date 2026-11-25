@@ -16,9 +16,15 @@ import {
   RefreshCw,
   Search,
   Clock,
+  Laptop,
+  Download,
+  AlertTriangle,
+  Ticket,
+  UserCheck,
 } from 'lucide-react';
-import { apiRequest } from './api';
+import { apiDownload, apiRequest } from './api';
 import { useAuth } from './auth';
+import { enqueueOfflineAction } from './offlineQueue';
 
 // ============================================================================
 // 1. SCANNER QR CODE MOBILE & DESKTOP (CAMÉRA)
@@ -491,11 +497,29 @@ export function AuditsPage() {
   async function handleScanSubmit(codeToScan?: string) {
     const code = (codeToScan || scanInput).trim();
     if (!code || !selectedCampagneId) return;
+    const siteConstate = campagneData?.campagne?.site || 'Bouaké';
+
+    if (!navigator.onLine) {
+      enqueueOfflineAction({
+        type: 'AUDIT_SCAN',
+        endpoint: `/audits/${selectedCampagneId}/scan`,
+        method: 'POST',
+        body: { code, site_constate: siteConstate },
+        label: `Scan Audit ${code} (${siteConstate})`,
+      });
+      setScanInput('');
+      setScanFeedback({
+        message: `📡 Mode hors-ligne : pointage de "${code}" sauvegardé localement. Il sera synchronisé automatiquement dès le retour du réseau.`,
+        type: 'warning',
+      });
+      return;
+    }
+
     try {
       const res = await apiRequest<any>(`/audits/${selectedCampagneId}/scan`, {
         token,
         method: 'POST',
-        body: { code, site_constate: campagneData?.campagne?.site || 'Bouaké' }
+        body: { code, site_constate: siteConstate }
       });
       setScanInput('');
       setScanFeedback({
@@ -507,6 +531,22 @@ export function AuditsPage() {
       await loadCampagneDetails(selectedCampagneId);
       await loadCampagnes();
     } catch (err: unknown) {
+      const isNetworkError = err instanceof Error && 'status' in err && (err as { status: number }).status === 0;
+      if (isNetworkError) {
+        enqueueOfflineAction({
+          type: 'AUDIT_SCAN',
+          endpoint: `/audits/${selectedCampagneId}/scan`,
+          method: 'POST',
+          body: { code, site_constate: siteConstate },
+          label: `Scan Audit ${code} (${siteConstate})`,
+        });
+        setScanInput('');
+        setScanFeedback({
+          message: `📡 Réseau inaccessible : pointage de "${code}" mis en file d'attente hors-ligne.`,
+          type: 'warning',
+        });
+        return;
+      }
       setScanFeedback({
         message: err instanceof Error ? err.message : 'Erreur lors du scan',
         type: 'error'
@@ -1165,6 +1205,349 @@ export function ActivityLogsPage() {
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+// ============================================================================
+// 6. PORTAIL COLLABORATEUR ("MON ESPACE IT & MES ÉQUIPEMENTS") (/mes-equipements)
+// ============================================================================
+export function MonEspacePage() {
+  const { token, user } = useAuth();
+  const [equipements, setEquipements] = useState<Array<Record<string, unknown>>>([]);
+  const [tickets, setTickets] = useState<Array<Record<string, unknown>>>([]);
+  const [loading, setLoading] = useState(true);
+  const [incidentAsset, setIncidentAsset] = useState<Record<string, unknown> | null>(null);
+  const [titre, setTitre] = useState('');
+  const [description, setDescription] = useState('');
+  const [priorite, setPriorite] = useState('moyenne');
+  const [submitting, setSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState('');
+
+  async function loadMonEspace() {
+    setLoading(true);
+    try {
+      const res = await apiRequest<{ equipements: Array<Record<string, unknown>>; tickets: Array<Record<string, unknown>> }>('/dashboard/mon-espace', { token });
+      setEquipements(res.equipements || []);
+      setTickets(res.tickets || []);
+    } catch (_) {
+      setEquipements([]);
+      setTickets([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadMonEspace();
+  }, [token]);
+
+  async function handleDownloadDecharge(affId: number, tag: string) {
+    try {
+      const blob = await apiDownload(`/affectations/${affId}/pdf`, { token });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Decharge_${tag || affId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Erreur téléchargement');
+    }
+  }
+
+  async function handleSubmitIncident(e: FormEvent) {
+    e.preventDefault();
+    if (!titre.trim() || !description.trim()) return;
+    setSubmitting(true);
+    const payload = {
+      asset_id: incidentAsset ? Number(incidentAsset.asset_id) : null,
+      titre: titre.trim(),
+      description: description.trim(),
+      priorite,
+    };
+
+    if (!navigator.onLine) {
+      enqueueOfflineAction({
+        type: 'INCIDENT_REPORT',
+        endpoint: '/dashboard/mon-espace/incident',
+        method: 'POST',
+        body: payload,
+        label: `Incident : ${titre.trim()}`,
+      });
+      setIncidentAsset(null);
+      setTitre('');
+      setDescription('');
+      setSubmitting(false);
+      setFeedback('📡 Hors-ligne : votre signalement a été enregistré localement et sera envoyé dès le retour du réseau.');
+      return;
+    }
+
+    try {
+      const res = await apiRequest<{ numero: string }>('/dashboard/mon-espace/incident', {
+        token,
+        method: 'POST',
+        body: payload,
+      });
+      setIncidentAsset(null);
+      setTitre('');
+      setDescription('');
+      setFeedback(`✅ Ticket ${res.numero} créé et transmis à l'équipe IT !`);
+      await loadMonEspace();
+    } catch (err: unknown) {
+      const isNetworkError = err instanceof Error && 'status' in err && (err as { status: number }).status === 0;
+      if (isNetworkError) {
+        enqueueOfflineAction({
+          type: 'INCIDENT_REPORT',
+          endpoint: '/dashboard/mon-espace/incident',
+          method: 'POST',
+          body: payload,
+          label: `Incident : ${titre.trim()}`,
+        });
+        setIncidentAsset(null);
+        setTitre('');
+        setDescription('');
+        setFeedback('📡 Réseau indisponible : signalement mis en file d’attente hors-ligne.');
+      } else {
+        alert(err instanceof Error ? err.message : 'Erreur lors de l’envoi');
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const displayName = [user?.prenom, user?.nom].filter(Boolean).join(' ') || user?.username || 'Collaborateur';
+
+  return (
+    <div>
+      <div className="page-heading">
+        <div>
+          <span className="eyebrow">PORTAIL COLLABORATEUR</span>
+          <h1>Mon Espace IT & Mes Équipements</h1>
+          <p>Bienvenue <strong>{displayName}</strong> — consultez vos matériels attribués et signalez un incident en 1 clic.</p>
+        </div>
+        <div className="heading-actions">
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={() => {
+              setIncidentAsset(equipements[0] || {});
+              setTitre('');
+              setDescription('');
+            }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            <AlertTriangle size={15} /> Signaler un problème
+          </button>
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={() => void loadMonEspace()}
+          >
+            <RefreshCw size={15} /> Actualiser
+          </button>
+        </div>
+      </div>
+
+      {feedback && (
+        <div className="panel" style={{ padding: '12px 16px', marginBottom: 18, background: '#f0fdf4', borderColor: '#bbf7d0', color: '#166534', fontWeight: 600, fontSize: 13 }}>
+          {feedback}
+        </div>
+      )}
+
+      {/* Mes Équipements */}
+      <section className="panel pro-card" style={{ marginBottom: 20 }}>
+        <div className="panel-heading">
+          <div>
+            <h2 style={{ fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <UserCheck size={18} color="#2563eb" /> Matériel attribué à votre nom ({equipements.length})
+            </h2>
+            <p style={{ fontSize: 11 }}>Équipements informatiques actuellement sous votre responsabilité</p>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="loading-lines"><i /><i /></div>
+        ) : equipements.length > 0 ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 16, marginTop: 16 }}>
+            {equipements.map((eq) => {
+              const tag = String(eq.asset_tag || `#${eq.asset_id}`);
+              return (
+                <div key={String(eq.affectation_id)} className="finance-card" style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div className="pro-icon-box blue"><Laptop size={18} /></div>
+                      <div>
+                        <strong style={{ fontSize: 15, display: 'block' }}>{tag}</strong>
+                        <span style={{ fontSize: 12, color: '#64748b' }}>
+                          {[eq.marque, eq.modele].filter(Boolean).join(' ') || String(eq.type || 'Équipement')}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="audit-badge conforme">Attribué</span>
+                  </div>
+
+                  <div style={{ fontSize: 12, color: '#475569', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, background: '#f8fafc', padding: 10, borderRadius: 8 }}>
+                    <div><span style={{ color: '#94a3b8' }}>S/N :</span> <code>{String(eq.serial_number || 'N/A')}</code></div>
+                    <div><span style={{ color: '#94a3b8' }}>Site :</span> {String(eq.site || '—')}</div>
+                    <div><span style={{ color: '#94a3b8' }}>OS :</span> {String(eq.os || '—')}</div>
+                    <div><span style={{ color: '#94a3b8' }}>Depuis :</span> {eq.date_attribution ? new Date(String(eq.date_attribution)).toLocaleDateString('fr-FR') : '—'}</div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 4 }}>
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      style={{ flex: 1, fontSize: 11, padding: '6px 10px', color: '#dc2626', borderColor: '#fecaca', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
+                      onClick={() => {
+                        setIncidentAsset(eq);
+                        setTitre(`Incident sur ${tag}`);
+                        setDescription('');
+                      }}
+                    >
+                      <AlertTriangle size={13} /> Signaler panne
+                    </button>
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      style={{ fontSize: 11, padding: '6px 10px', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                      onClick={() => void handleDownloadDecharge(Number(eq.affectation_id), tag)}
+                      title="Télécharger votre fiche de décharge PDF"
+                    >
+                      <Download size={13} /> Décharge
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ padding: 28, textAlign: 'center', color: '#64748b', fontSize: 13 }}>
+            Aucun équipement n'est actuellement affecté à votre fiche collaborateur ({user?.email || displayName}).
+          </div>
+        )}
+      </section>
+
+      {/* Mes Tickets Récents */}
+      <section className="panel pro-card">
+        <div className="panel-heading">
+          <div>
+            <h2 style={{ fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Ticket size={18} color="#f59e0b" /> Suivi de mes demandes & incidents ({tickets.length})
+            </h2>
+            <p style={{ fontSize: 11 }}>Historique de vos signalements auprès du support IT</p>
+          </div>
+        </div>
+        <div className="table-scroll" style={{ marginTop: 14 }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Numéro</th>
+                <th>Objet</th>
+                <th>Machine</th>
+                <th>Priorité</th>
+                <th>Statut</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tickets.map((t) => (
+                <tr key={String(t.id)}>
+                  <td><strong>{String(t.numero)}</strong></td>
+                  <td>{String(t.titre)}</td>
+                  <td>{t.asset_tag ? String(t.asset_tag) : '—'}</td>
+                  <td><span className="audit-badge anomalie">{String(t.priorite)}</span></td>
+                  <td><span className="audit-badge conforme">{String(t.statut)}</span></td>
+                  <td style={{ fontSize: 11, color: '#64748b' }}>
+                    {t.created_at ? new Date(String(t.created_at)).toLocaleDateString('fr-FR') : '—'}
+                  </td>
+                </tr>
+              ))}
+              {!tickets.length && (
+                <tr>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: 24, color: '#94a3b8' }}>
+                    Vous n'avez aucun ticket ouvert actuellement.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Modal Signalement Rapide */}
+      {incidentAsset && (
+        <div className="dialog-overlay" onClick={() => setIncidentAsset(null)}>
+          <div className="create-dialog" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ margin: 0 }}>Signaler un incident IT</h3>
+              <button type="button" className="icon-button" onClick={() => setIncidentAsset(null)}><X size={18} /></button>
+            </div>
+
+            {Boolean(incidentAsset.asset_tag) && (
+              <div style={{ padding: '8px 12px', borderRadius: 8, background: '#f1f5f9', fontSize: 12, marginBottom: 12 }}>
+                Machine concernée : <strong>{String(incidentAsset.asset_tag)}</strong> ({String(incidentAsset.marque || '')} {String(incidentAsset.modele || '')})
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+              {['Ne démarre plus / Écran noir', 'Problème Wi-Fi / Réseau', 'Lenteur système', 'Batterie / Chargeur HS'].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  className="filter-pill"
+                  style={{ fontSize: 11 }}
+                  onClick={() => setTitre(incidentAsset.asset_tag ? `${preset} (${String(incidentAsset.asset_tag)})` : preset)}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+
+            <form onSubmit={handleSubmitIncident} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div>
+                <label className="field-label">Objet de l'incident *</label>
+                <input
+                  type="text"
+                  className="input"
+                  required
+                  placeholder="Ex: Écran bleu au démarrage"
+                  value={titre}
+                  onChange={(e) => setTitre(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="field-label">Urgence</label>
+                <select className="select" value={priorite} onChange={(e) => setPriorite(e.target.value)}>
+                  <option value="basse">Basse (Gêne mineure)</option>
+                  <option value="moyenne">Moyenne (Normale)</option>
+                  <option value="haute">Haute (Bloquant partiel)</option>
+                  <option value="critique">Critique (Arrêt total de travail)</option>
+                </select>
+              </div>
+              <div>
+                <label className="field-label">Description détaillée *</label>
+                <textarea
+                  className="input"
+                  rows={3}
+                  required
+                  placeholder="Décrivez brièvement le symptôme constaté..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+              <div className="dialog-actions">
+                <button type="button" className="button button-secondary" onClick={() => setIncidentAsset(null)}>Annuler</button>
+                <button type="submit" className="button button-primary" disabled={submitting}>
+                  {submitting ? 'Envoi...' : 'Envoyer au Support IT'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
