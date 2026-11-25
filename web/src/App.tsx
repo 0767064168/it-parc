@@ -156,6 +156,38 @@ type FormFieldDefinition = {
   placeholder?: string;
 };
 
+const assetFormFields: FormFieldDefinition[] = [
+  { name: 'asset_tag', label: 'Nom Machine / Référence d’inventaire (ex: BKE-LT-016)', required: true },
+  { name: 'serial_number', label: 'Numéro de série (S/N)', placeholder: 'Ex: 5CD1234ABC' },
+  { name: 'type', label: 'Type d’équipement', type: 'select', options: ['laptop', 'desktop', 'pax_terminal', 'ecran', 'imprimante', 'telephone', 'tablette', 'serveur', 'reseau'], required: true },
+  { name: 'marque', label: 'Marque', required: true, placeholder: 'Dell, HP, Lenovo, Apple…' },
+  { name: 'modele', label: 'Modèle', placeholder: 'Latitude 5540, EliteBook…' },
+  { name: 'site', label: 'Site / Localisation', type: 'select', options: ['BOUAKE', 'ABIDJAN', 'BOUAFLE', 'KATIOLA', 'AZAGUIE', 'DJEBOA', 'YAMOUSSOUKRO'] },
+  { name: 'departement', label: 'Département', type: 'select', options: ['Direction IT', 'CAJOOMA', 'COMPTABILITE', 'Commercial', 'RH', 'Logistique', 'Direction Générale'] },
+  { name: 'statut', label: 'Statut', type: 'select', options: ['en_service', 'en_stock', 'en_maintenance', 'hors_service', 'reforme'] },
+  { name: 'specs.cpu', label: 'Processeur (CPU)', placeholder: 'Intel Core i5 / i7, Ryzen…' },
+  { name: 'specs.ram', label: 'Mémoire RAM', placeholder: '8 Go, 16 Go, 32 Go…' },
+  { name: 'specs.stockage', label: 'Disque / Stockage', placeholder: '256 Go SSD, 512 Go NVMe…' },
+  { name: 'specs.os', label: 'Système d’exploitation (OS)', placeholder: 'Windows 11 Pro, Windows 10…' },
+  { name: 'specs.version_os', label: 'Version OS', placeholder: '23H2, 22H2…' },
+  { name: 'specs.hostname', label: 'Nom réseau (Hostname)' },
+  { name: 'specs.ip_address', label: 'Adresse IP', placeholder: '192.168.1.x' },
+  { name: 'specs.mac_address', label: 'Adresse MAC', placeholder: 'AA:BB:CC:DD:EE:FF' },
+  { name: 'specs.imei', label: 'IMEI (si mobile / terminal PAX)' },
+  { name: 'couts.prix', label: 'Prix d’acquisition (XOF)', type: 'number', placeholder: 'Ex: 650000' },
+  { name: 'couts.date_acquisition', label: 'Date d’acquisition', type: 'date' },
+  { name: 'couts.fin_garantie', label: 'Date de fin de garantie', type: 'date' },
+  { name: 'couts.fournisseur', label: 'Fournisseur', placeholder: 'Nom du prestataire / vendeur' },
+  { name: 'couts.bon_commande', label: 'N° Bon de commande' },
+  { name: 'securite.defender', label: 'Microsoft Defender actif', type: 'checkbox' },
+  { name: 'securite.edr', label: 'Agent EDR déployé', type: 'checkbox' },
+  { name: 'securite.intune', label: 'Enrôlé Microsoft Intune', type: 'checkbox' },
+  { name: 'securite.entra_id', label: 'Joint à Entra ID (Azure AD)', type: 'checkbox' },
+  { name: 'securite.bitlocker', label: 'Chiffrement BitLocker actif', type: 'checkbox' },
+  { name: 'securite.onedrive', label: 'Sauvegarde OneDrive active', type: 'checkbox' },
+  { name: 'notes', label: 'Notes ou observations', type: 'textarea' },
+];
+
 const modules: Record<string, ModuleDefinition> = {
   '/assets': {
     title: 'Inventaire du parc',
@@ -164,31 +196,14 @@ const modules: Record<string, ModuleDefinition> = {
     canSearch: true,
     paginated: true,
     wrapAsset: true,
-    createFields: [
-      { name: 'asset_tag', label: 'Référence d’inventaire (ex: BKE-LT-016)', required: true },
-      { name: 'type', label: 'Type d’équipement', type: 'select', options: ['laptop', 'desktop', 'serveur', 'ecran', 'imprimante', 'tablette', 'smartphone', 'reseau'], required: true },
-      { name: 'marque', label: 'Marque', required: true, placeholder: 'Dell, HP, Lenovo, Apple…' },
-      { name: 'modele', label: 'Modèle', placeholder: 'Latitude 5540, EliteBook…' },
-      { name: 'site', label: 'Site', type: 'select', options: ['Bouaké', 'Abidjan', 'Yamoussoukro', 'Katiola', 'Azaguié', 'Djeboa'] },
-      { name: 'departement', label: 'Département', type: 'select', options: ['Direction IT', 'Comptabilité', 'Commercial', 'RH', 'Logistique', 'Direction Générale'] },
-      { name: 'statut', label: 'Statut initial', type: 'select', options: ['en_service', 'en_stock', 'en_maintenance', 'hors_service', 'reforme'] },
-      { name: 'notes', label: 'Notes ou observations', type: 'textarea' },
-    ],
-    editFields: [
-      { name: 'asset_tag', label: 'Référence d’inventaire', required: true },
-      { name: 'type', label: 'Type d’équipement', type: 'select', options: ['laptop', 'desktop', 'serveur', 'ecran', 'imprimante', 'tablette', 'smartphone', 'reseau'], required: true },
-      { name: 'marque', label: 'Marque', required: true },
-      { name: 'modele', label: 'Modèle' },
-      { name: 'site', label: 'Site', type: 'select', options: ['Bouaké', 'Abidjan', 'Yamoussoukro', 'Katiola', 'Azaguié', 'Djeboa'] },
-      { name: 'departement', label: 'Département', type: 'select', options: ['Direction IT', 'Comptabilité', 'Commercial', 'RH', 'Logistique', 'Direction Générale'] },
-      { name: 'statut', label: 'Statut', type: 'select', options: ['en_service', 'en_stock', 'en_maintenance', 'hors_service', 'reforme'] },
-      { name: 'notes', label: 'Notes ou observations', type: 'textarea' },
-    ],
+    createFields: assetFormFields,
+    editFields: assetFormFields,
     adminOnlyDelete: true,
     columns: [
-      { key: 'asset_tag', label: 'Référence' }, { key: 'type', label: 'Type' },
-      { key: 'marque', label: 'Marque' }, { key: 'modele', label: 'Modèle' },
-      { key: 'site', label: 'Site' }, { key: 'statut', label: 'État' },
+      { key: 'asset_tag', label: 'Référence' }, { key: 'serial_number', label: 'N° Série' },
+      { key: 'type', label: 'Type' }, { key: 'marque', label: 'Marque' },
+      { key: 'modele', label: 'Modèle' }, { key: 'site', label: 'Site' },
+      { key: 'statut', label: 'État' },
     ],
   },
   '/affectations': {
@@ -1205,7 +1220,12 @@ function getEditFieldValue(record: Record<string, unknown>, field: FormFieldDefi
     departement: record.departement ?? user?.departement,
     site: record.site ?? user?.site,
   };
-  const value = values[field.name] ?? record[field.name];
+  let value = values[field.name] ?? record[field.name];
+  if (value === undefined && field.name.includes('.')) {
+    const [section, key] = field.name.split('.');
+    const sectionObj = asRecord(record[section]);
+    value = sectionObj?.[key] ?? record[key];
+  }
   if (field.type === 'checkbox') return value === true || value === 1 || value === '1';
   if (value === null || value === undefined) return '';
   const text = String(value);
@@ -2304,6 +2324,18 @@ function CreateItemDialog({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (mode === 'edit' && definition.wrapAsset && initialRecord?.id) {
+      apiRequest<Record<string, unknown>>(`/assets/${initialRecord.id}`, { token })
+        .then((fullAsset) => {
+          setValues(Object.fromEntries(
+            fields.map((field) => [field.name, getEditFieldValue(fullAsset, field)]),
+          ));
+        })
+        .catch(() => {});
+    }
+  }, [definition.wrapAsset, fields, initialRecord?.id, mode, token]);
+
+  useEffect(() => {
     if (mode === 'create' && fields.some((f) => f.name === 'asset_id')) {
       apiRequest<unknown>('/assets?limit=150', { token })
         .then((res) => {
@@ -2363,10 +2395,29 @@ function CreateItemDialog({
         body.user_id = Number(initialRecord.user_id);
       }
       const id = Number(initialRecord?.id);
+      let requestBody: unknown = body;
+      if (definition.wrapAsset) {
+        const assetPayload: Record<string, unknown> = {};
+        const specsPayload: Record<string, unknown> = {};
+        const securitePayload: Record<string, unknown> = {};
+        const coutsPayload: Record<string, unknown> = {};
+        for (const [key, val] of Object.entries(body)) {
+          if (key.startsWith('specs.')) specsPayload[key.slice(6)] = val;
+          else if (key.startsWith('securite.')) securitePayload[key.slice(9)] = val;
+          else if (key.startsWith('couts.')) coutsPayload[key.slice(6)] = val;
+          else assetPayload[key] = val;
+        }
+        requestBody = {
+          asset: assetPayload,
+          ...(Object.keys(specsPayload).length > 0 ? { specs: specsPayload } : {}),
+          ...(Object.keys(securitePayload).length > 0 ? { securite: securitePayload } : {}),
+          ...(Object.keys(coutsPayload).length > 0 ? { couts: coutsPayload } : {}),
+        };
+      }
       await apiRequest<unknown>(mode === 'edit' ? `${definition.endpoint}/${id}` : definition.endpoint, {
         method: mode === 'edit' ? 'PUT' : 'POST',
         token,
-        body: definition.wrapAsset ? { asset: body } : body,
+        body: requestBody,
       });
       onCreated();
     } catch (reason) {
@@ -3071,8 +3122,8 @@ function ReportsPage() {
 
                 {/* Pyramide des âges et progression globale */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginTop: 12 }}>
-                  <div style={{ background: '#f8fafc', padding: 16, borderRadius: 12, border: '1px solid #e2e8f0' }}>
-                    <h3 style={{ fontSize: 12, fontWeight: 700, margin: 0, color: '#334155' }}>Taux Global d'Amortissement du Parc</h3>
+                  <div className="finance-subbox">
+                    <h3 style={{ fontSize: 12, fontWeight: 700, margin: 0 }}>Taux Global d'Amortissement du Parc</h3>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '12px 0 6px' }}>
                       <div className="pro-bar-track" style={{ flex: 1, height: 14 }}>
                         <span style={{ width: `${amortissement.taux_global_amorti_pct}%`, background: 'linear-gradient(90deg, #3b82f6, #f59e0b, #ef4444)' }} />
@@ -3082,8 +3133,8 @@ function ReportsPage() {
                     <span style={{ fontSize: 11, color: '#64748b' }}>Pourcentage de la valeur d'actif déjà amortie</span>
                   </div>
 
-                  <div style={{ background: '#f8fafc', padding: 16, borderRadius: 12, border: '1px solid #e2e8f0' }}>
-                    <h3 style={{ fontSize: 12, fontWeight: 700, margin: 0, color: '#334155' }}>Répartition par Tranche d'Âge</h3>
+                  <div className="finance-subbox">
+                    <h3 style={{ fontSize: 12, fontWeight: 700, margin: 0 }}>Répartition par Tranche d'Âge</h3>
                     <div className="finance-age-pyramid">
                       <div className="finance-pyramid-row">
                         <span className="finance-pyramid-label">&lt; 1 an (Neuf) :</span>
@@ -3116,6 +3167,39 @@ function ReportsPage() {
                     </div>
                   </div>
                 </div>
+
+                {Array.isArray(amortissement.items) && amortissement.items.filter((i: any) => i.est_amorti && i.statut !== 'reforme').length > 0 && (
+                  <div className="table-scroll" style={{ marginTop: 18 }}>
+                    <h3 style={{ fontSize: 12, fontWeight: 700, margin: '0 0 10px' }}>Équipements 100% Amortis à Renouveler en Priorité</h3>
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Machine</th>
+                          <th>Modèle</th>
+                          <th>Site</th>
+                          <th>Âge</th>
+                          <th>Valeur Achat</th>
+                          <th>VNC</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {amortissement.items
+                          .filter((i: any) => i.est_amorti && i.statut !== 'reforme')
+                          .slice(0, 8)
+                          .map((item: any) => (
+                            <tr key={String(item.id)}>
+                              <td><strong>{String(item.asset_tag || `#${item.id}`)}</strong></td>
+                              <td>{[item.marque, item.modele].filter(Boolean).join(' ') || String(item.type || '—')}</td>
+                              <td>{String(item.site || '—')}</td>
+                              <td><span className="audit-badge manquant">{item.age_annees} ans</span></td>
+                              <td>{Number(item.prix_achat || 0).toLocaleString('fr-FR')} {amortissement.devise || 'XOF'}</td>
+                              <td><strong>0 {amortissement.devise || 'XOF'}</strong></td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </>
             )}
           </section>

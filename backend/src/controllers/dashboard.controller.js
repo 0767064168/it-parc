@@ -41,11 +41,24 @@ async function getAmortissement(req, res) {
 
 async function triggerExpiringAlertsEmail(req, res) {
   try {
+    let licencesJours = 30;
+    let garantiesJours = 60;
+    try {
+      const settingsRows = await query('SELECT cle, valeur FROM system_settings WHERE cle IN (?, ?)', ['alerte_licences_jours', 'alerte_garanties_jours']);
+      for (const s of settingsRows || []) {
+        const parsed = parseInt(s.valeur, 10);
+        if (!Number.isNaN(parsed) && parsed >= 1 && parsed <= 365) {
+          if (s.cle === 'alerte_licences_jours') licencesJours = parsed;
+          if (s.cle === 'alerte_garanties_jours') garantiesJours = parsed;
+        }
+      }
+    } catch (_) {}
+
     const licencesExpirant = await query(`
       SELECT id, nom, editeur, date_expiration FROM licences
       WHERE date_expiration IS NOT NULL
         AND date_expiration >= CURDATE()
-        AND date_expiration <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+        AND date_expiration <= DATE_ADD(CURDATE(), INTERVAL ${licencesJours} DAY)
     `);
     const garantiesExpirant = await query(`
       SELECT a.id, a.\`Nom Machine\` as asset_tag, a.marque, a.modele, c.fin_garantie
@@ -53,7 +66,7 @@ async function triggerExpiringAlertsEmail(req, res) {
       JOIN assets a ON a.id = c.asset_id AND a.deleted_at IS NULL
       WHERE c.fin_garantie IS NOT NULL
         AND c.fin_garantie >= CURDATE()
-        AND c.fin_garantie <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+        AND c.fin_garantie <= DATE_ADD(CURDATE(), INTERVAL ${garantiesJours} DAY)
     `);
     const admins = await query("SELECT email FROM auth_users WHERE role IN ('admin', 'technicien') AND actif = 1 AND email IS NOT NULL");
     const adminEmails = admins.map(a => a.email).filter(Boolean);

@@ -1391,7 +1391,7 @@ export function MonEspacePage() {
                     <span className="audit-badge conforme">Attribué</span>
                   </div>
 
-                  <div style={{ fontSize: 12, color: '#475569', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, background: '#f8fafc', padding: 10, borderRadius: 8 }}>
+                  <div className="mon-espace-specs">
                     <div><span style={{ color: '#94a3b8' }}>S/N :</span> <code>{String(eq.serial_number || 'N/A')}</code></div>
                     <div><span style={{ color: '#94a3b8' }}>Site :</span> {String(eq.site || '—')}</div>
                     <div><span style={{ color: '#94a3b8' }}>OS :</span> {String(eq.os || '—')}</div>
