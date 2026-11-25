@@ -321,12 +321,13 @@ const modules: Record<string, ModuleDefinition> = {
       { key: 'statut', label: 'État' },
     ],
     createFields: [
-      { name: 'asset_id', label: 'Identifiant équipement', type: 'number', required: true },
+      { name: 'asset_id', label: 'Équipement concerné', type: 'number', required: true },
       { name: 'date_prevue', label: 'Date prévue', type: 'date', required: true },
-      { name: 'description', label: 'Description', type: 'textarea', required: true },
-      { name: 'type', label: 'Type' },
+      { name: 'type', label: 'Type d’intervention', type: 'select', options: ['preventive', 'corrective', 'evolutive'], required: true },
+      { name: 'statut', label: 'État initial', type: 'select', options: ['planifiee', 'en_cours', 'terminee', 'annulee'] },
+      { name: 'description', label: 'Description des travaux', type: 'textarea', required: true },
       { name: 'technicien_id', label: 'Identifiant technicien', type: 'number' },
-      { name: 'cout', label: 'Coût', type: 'number' },
+      { name: 'cout', label: 'Coût (XOF)', type: 'number' },
     ],
     editFields: [
       { name: 'date_prevue', label: 'Date prévue', type: 'date', required: true },
@@ -2322,6 +2323,8 @@ function CreateItemDialog({
   const [assetOptions, setAssetOptions] = useState<Array<{ id: number; label: string }>>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [nomSociete, setNomSociete] = useState('CC');
+  const [nomBeneficiaire, setNomBeneficiaire] = useState('');
 
   useEffect(() => {
     if (mode === 'edit' && definition.wrapAsset && initialRecord?.id) {
@@ -2435,6 +2438,52 @@ function CreateItemDialog({
           <button className="icon-button dialog-close" onClick={onClose} disabled={saving} aria-label="Fermer"><X size={19} /></button>
         </div>
         <form className="create-form" onSubmit={submit}>
+          {definition.wrapAsset && (
+            <div className="finance-subbox" style={{ marginBottom: 14, padding: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#0284c7', marginBottom: 8 }}>
+                Assistant de nomenclature : ÉQUIPEMENT-SOCIÉTÉ-DÉPARTEMENT-NOM (ex: PC-CC-IT-YVES)
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  className="input"
+                  style={{ width: 90, padding: '5px 8px', fontSize: 12 }}
+                  placeholder="Société (CC)"
+                  value={nomSociete}
+                  onChange={(e) => setNomSociete(e.target.value.toUpperCase())}
+                />
+                <input
+                  type="text"
+                  className="input"
+                  style={{ flex: 1, minWidth: 140, padding: '5px 8px', fontSize: 12 }}
+                  placeholder="Nom utilisateur (ex: YVES)"
+                  value={nomBeneficiaire}
+                  onChange={(e) => setNomBeneficiaire(e.target.value.toUpperCase())}
+                />
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  style={{ padding: '5px 10px', fontSize: 11 }}
+                  onClick={() => {
+                    const typeVal = String(values.type || 'laptop').toLowerCase();
+                    const prefix = typeVal === 'laptop' || typeVal === 'desktop' ? 'PC'
+                      : typeVal === 'imprimante' ? 'IMP'
+                      : typeVal === 'ecran' ? 'ECR'
+                      : typeVal === 'pax_terminal' ? 'PAX'
+                      : typeVal === 'telephone' ? 'TEL'
+                      : typeVal.slice(0, 3).toUpperCase();
+                    const soc = (nomSociete || 'CC').trim().toUpperCase();
+                    const deptRaw = String(values.departement || 'IT').trim().toUpperCase();
+                    const dept = deptRaw.includes('IT') ? 'IT' : deptRaw.slice(0, 4).replace(/[^A-Z0-9]/g, '');
+                    const nom = (nomBeneficiaire || 'YVES').trim().toUpperCase().replace(/\s+/g, '');
+                    setValues((cur) => ({ ...cur, asset_tag: `${prefix}-${soc}-${dept}-${nom}` }));
+                  }}
+                >
+                  Générer Nom Machine
+                </button>
+              </div>
+            </div>
+          )}
           <div className="create-fields">
             {fields.map((field) => (
               <label className={`create-field${field.type === 'textarea' ? ' field-wide' : ''}${field.type === 'checkbox' ? ' checkbox-field' : ''}`} key={field.name}>
