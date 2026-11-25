@@ -1705,4 +1705,41 @@ a { color: inherit; text-decoration: none; }
   background: rgba(15, 23, 42, 0.55);
   color: #cbd5e1;
 }
+.field-label {
+  display: block;
+  margin-bottom: 6px;
+  color: #536179;
+  font-size: 11px;
+  font-weight: 600;
+}
+.input,
+.select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  outline: 0;
+  border: 1px solid #e2e7ef;
+  border-radius: 8px;
+  color: #38475e;
+  background: #fff;
+  font: 12px 'Segoe UI', sans-serif;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.input { min-height: 36px; }
+.select { height: 36px; }
+textarea.input { min-height: 82px; resize: vertical; }
+.input:focus,
+.select:focus {
+  border-color: #7185e4;
+  box-shadow: 0 0 0 3px #7185e41d;
+}
+[data-theme="dark"] .field-label {
+  color: #94a3b8;
+}
+[data-theme="dark"] .input,
+[data-theme="dark"] .select {
+  background: #0f172a;
+  border-color: #334155;
+  color: #f8fafc;
+}
 
