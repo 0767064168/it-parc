@@ -208,7 +208,7 @@ const modules: Record<string, ModuleDefinition> = {
   },
   '/affectations': {
     title: 'Affectations', subtitle: 'Attribution et décharge de matériel', endpoint: '/affectations',
-    paginated: true,
+    canSearch: true, paginated: true,
     columns: [
       { key: 'asset.asset_tag', label: 'Nom Machine' },
       { key: 'user.nom', label: 'Nom Utilisateur' },

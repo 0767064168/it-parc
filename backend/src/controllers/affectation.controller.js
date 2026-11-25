@@ -34,7 +34,13 @@ async function list(req, res) {
 
     const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
-    const [{ total }] = await query(`SELECT COUNT(*) as total FROM affectations af ${where}`, params);
+    const [{ total }] = await query(`
+      SELECT COUNT(*) as total
+      FROM affectations af
+      JOIN assets a ON a.id = af.asset_id
+      JOIN utilisateurs u ON u.id = af.user_id
+      ${where}
+    `, params);
     const affectations = await query(`
       SELECT af.*,
         a.\`Nom Machine\` as asset_tag, a.marque, a.modele, a.type, a.statut,
