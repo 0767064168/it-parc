@@ -24,6 +24,7 @@ const logsCtrl = require('../src/controllers/logs.controller');
 const dashboardCtrl = require('../src/controllers/dashboard.controller');
 const settingsCtrl = require('../src/controllers/settings.controller');
 const assetCtrl = require('../src/controllers/asset.controller');
+const { PERMISSIONS } = require('../src/middlewares/roles');
 
 function mockRes() {
   return {
@@ -142,6 +143,11 @@ describe('Nouveaux modules DSI (Audits, Logs, Mon Espace, Paramètres, Amortisse
       success: true,
       data: expect.objectContaining({ sent: true, to: 'test@bouake.ci' }),
     }));
+  });
+
+  test('les techniciens peuvent archiver et supprimer des équipements', () => {
+    expect(PERMISSIONS['assets:delete']).toContain('technicien');
+    expect(PERMISSIONS['assets:archive']).toContain('technicien');
   });
 
   test('asset.archive fonctionne sans req.body (DELETE sans payload)', async () => {

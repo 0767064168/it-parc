@@ -7,6 +7,7 @@ const fs = require('fs');
 const WikiModel = require('../models/wiki.model');
 const { success, error } = require('../utils/response');
 const logger = require('../utils/logger');
+const storageService = require('../services/storage.service');
 
 // ─── Articles ─────────────────────────────────────────
 async function list(req, res) {
@@ -105,11 +106,17 @@ async function uploadAttachment(req, res) {
 
     if (!req.file) return error(res, 'Aucun fichier reçu', 400);
 
+    const storedPath = await storageService.uploadFile(
+      req.file.path,
+      `wiki/${articleId}/${req.file.filename}`,
+      req.file.mimetype
+    );
+
     const attachmentId = await WikiModel.createAttachment({
       article_id: articleId,
       nom_fichier: req.file.filename,
       nom_original: req.file.originalname,
-      chemin: req.file.path,
+      chemin: storedPath,
       taille: req.file.size,
       type_mime: req.file.mimetype,
       uploaded_by: req.user.id,
@@ -132,25 +139,21 @@ async function downloadAttachment(req, res) {
     const attachment = await WikiModel.findAttachmentById(attachmentId);
     if (!attachment) return error(res, 'Fichier introuvable', 404);
 
-    // Résoudre le chemin depuis la racine du projet (server.js) si relatif
     let filePath = attachment.chemin;
-    if (!path.isAbsolute(filePath)) {
+    if (filePath && !filePath.startsWith('supabase://') && !path.isAbsolute(filePath)) {
       filePath = path.join(__dirname, '../../', filePath);
     }
-    filePath = path.resolve(filePath);
 
-    if (!fs.existsSync(filePath)) {
+    const sent = await storageService.sendStoredFile(
+      filePath,
+      res,
+      attachment.nom_original,
+      attachment.type_mime
+    );
+    if (!sent) {
       logger.error(`Fichier physique introuvable: ${filePath}`);
       return error(res, 'Fichier physique introuvable sur le serveur', 404);
     }
-
-    // res.download gère Content-Disposition + Content-Type automatiquement
-    res.download(filePath, attachment.nom_original, (downloadErr) => {
-      if (downloadErr && !res.headersSent) {
-        logger.error('Erreur envoi fichier wiki:', downloadErr);
-        res.status(500).json({ success: false, message: 'Erreur lors du téléchargement' });
-      }
-    });
   } catch (err) {
     logger.error('Erreur downloadAttachment wiki:', err);
     return error(res, 'Erreur serveur', 500);
@@ -163,12 +166,7 @@ async function deleteAttachment(req, res) {
     const attachment = await WikiModel.findAttachmentById(attachmentId);
     if (!attachment) return error(res, 'Fichier introuvable', 404);
 
-    // Supprimer le fichier physique
-    const filePath = path.resolve(attachment.chemin);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-
+    await storageService.deleteStoredFile(attachment.chemin);
     await WikiModel.deleteAttachment(attachmentId);
     return success(res, null, 'Fichier supprimé avec succès');
   } catch (err) {

@@ -65,7 +65,7 @@ import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSe
 import { apiDownload, apiRequest } from './api';
 import { useAuth } from './auth';
 import { QrScannerModal, BatchQrLabelsModal, SignaturePadModal, CsvImportAssetsModal, AuditsPage, ActivityLogsPage, MonEspacePage, SettingsPage } from './AuditAndTools';
-import { getOfflineQueue, syncOfflineQueue, OFFLINE_QUEUE_EVENT } from './offlineQueue';
+import { enqueueOfflineAction, getOfflineQueue, syncOfflineQueue, OFFLINE_QUEUE_EVENT } from './offlineQueue';
 
 type DashboardData = {
   totaux?: Record<string, number>;
@@ -1301,6 +1301,7 @@ function ModulePage({ path }: { path: string }) {
   const [statutFilterState, setStatutFilterState] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
+  const [pageLimit, setPageLimit] = useState(20);
 
   const rows = useMemo(() => extractRows(payload), [payload]);
   const filteredRows = useMemo(() => {
@@ -1504,7 +1505,7 @@ function ModulePage({ path }: { path: string }) {
   const details = pageTitles[path];
   const totalCount = asRecord(payload)?.total;
   const canNextPage = definition.paginated && (
-    typeof totalCount === 'number' ? page * 20 < totalCount : rows.length === 20
+    typeof totalCount === 'number' ? page * pageLimit < totalCount : rows.length === pageLimit
   );
   const role = (user?.role ?? '').toLowerCase();
   const canCreate = Boolean(
@@ -1562,6 +1563,23 @@ function ModulePage({ path }: { path: string }) {
     }
   }
 
+  async function purgeRow(row: Record<string, unknown>) {
+    const id = Number(row.id);
+    if (!Number.isInteger(id) || id <= 0) return;
+    const label = String(row.asset_tag ?? row['Nom Machine'] ?? `#${id}`);
+    if (!window.confirm(`Supprimer DÉFINITIVEMENT « ${label} » ? Cette action est irréversible.`)) return;
+    try {
+      await apiRequest<unknown>(`/assets/${id}/purge`, {
+        method: 'DELETE',
+        token,
+      });
+      setSuccessMessage(`Équipement « ${label} » supprimé définitivement.`);
+      setRefreshKey((current) => current + 1);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'La suppression définitive a échoué.');
+    }
+  }
+
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -1569,7 +1587,7 @@ function ModulePage({ path }: { path: string }) {
     apiRequest<unknown>(definition.endpoint, {
       token,
       query: {
-        ...(definition.paginated ? { page, limit: 20 } : {}),
+        ...(definition.paginated ? { page, limit: pageLimit } : {}),
         ...(statusFilter ? { statut: statusFilter } : statutFilterState ? { statut: statutFilterState } : {}),
         ...(siteFilter ? { site: siteFilter } : {}),
         ...(deptFilter ? { departement: deptFilter } : {}),
@@ -1584,7 +1602,7 @@ function ModulePage({ path }: { path: string }) {
       if (active) setLoading(false);
     });
     return () => { active = false; };
-  }, [definition, path, page, refreshKey, statusFilter, statutFilterState, siteFilter, deptFilter, showArchived, submittedQuery, token]);
+  }, [definition, path, page, pageLimit, refreshKey, statusFilter, statutFilterState, siteFilter, deptFilter, showArchived, submittedQuery, token]);
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2312,18 +2330,32 @@ function ModulePage({ path }: { path: string }) {
                           </button>
                         )}
                         {path === '/assets' && showArchived && role === 'admin' && (
-                          <button
-                            type="button"
-                            className="button button-primary row-action-button"
-                            title="Restaurer en stock"
-                            aria-label={`Restaurer ${String(row.asset_tag ?? row.nom ?? row.id)}`}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void restoreRow(row);
-                            }}
-                          >
-                            <RotateCcw size={13} /><span>Restaurer</span>
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              className="button button-primary row-action-button"
+                              title="Restaurer en stock"
+                              aria-label={`Restaurer ${String(row.asset_tag ?? row.nom ?? row.id)}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void restoreRow(row);
+                              }}
+                            >
+                              <RotateCcw size={13} /><span>Restaurer</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="button button-danger row-action-button"
+                              title="Supprimer définitivement"
+                              aria-label={`Purger ${String(row.asset_tag ?? row.nom ?? row.id)}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void purgeRow(row);
+                              }}
+                            >
+                              <Trash2 size={13} /><span>Purger</span>
+                            </button>
+                          </>
                         )}
                         {canDelete && !(path === '/assets' && showArchived) && (
                           <button
@@ -2353,7 +2385,18 @@ function ModulePage({ path }: { path: string }) {
         )}
         {definition.paginated && <div className="pagination">
           <button className="button button-secondary" disabled={page <= 1 || loading} onClick={() => setPage((current) => Math.max(1, current - 1))}>Précédent</button>
-          <span>Page {page}</span>
+          <span>Page {page}{typeof totalCount === 'number' ? ` / ${Math.max(1, Math.ceil(totalCount / pageLimit))}` : ''}</span>
+          <select
+            className="filter-select"
+            value={pageLimit}
+            onChange={(e) => { setPageLimit(Number(e.target.value)); setPage(1); }}
+            title="Lignes par page"
+            aria-label="Lignes par page"
+          >
+            <option value={20}>20 / page</option>
+            <option value={50}>50 / page</option>
+            <option value={100}>100 / page</option>
+          </select>
           <button className="button button-secondary" disabled={!canNextPage || loading} onClick={() => setPage((current) => current + 1)}>Suivant</button>
         </div>}
       </section>
@@ -2482,12 +2525,46 @@ function CreateItemDialog({
           ...(Object.keys(coutsPayload).length > 0 ? { couts: coutsPayload } : {}),
         };
       }
-      await apiRequest<unknown>(mode === 'edit' ? `${definition.endpoint}/${id}` : definition.endpoint, {
-        method: mode === 'edit' ? 'PUT' : 'POST',
-        token,
-        body: requestBody,
-      });
-      onCreated();
+      const targetEndpoint = mode === 'edit' ? `${definition.endpoint}/${id}` : definition.endpoint;
+      const targetMethod = mode === 'edit' ? 'PUT' : 'POST';
+      const offlineSupported = ['/assets', '/affectations', '/tickets'].includes(definition.endpoint);
+
+      const enqueueCurrentAction = () => {
+        const type = definition.endpoint === '/assets'
+          ? (mode === 'edit' ? 'ASSET_UPDATE' : 'ASSET_CREATE')
+          : definition.endpoint === '/affectations'
+            ? 'AFFECTATION_CREATE'
+            : 'TICKET_CREATE';
+        enqueueOfflineAction({
+          type,
+          endpoint: targetEndpoint,
+          method: targetMethod,
+          body: requestBody as Record<string, unknown>,
+          label: `${mode === 'edit' ? 'Mise à jour' : 'Création'} ${definition.endpoint.slice(1)}`,
+        });
+        onCreated();
+      };
+
+      if (!navigator.onLine && offlineSupported) {
+        enqueueCurrentAction();
+        return;
+      }
+
+      try {
+        await apiRequest<unknown>(targetEndpoint, {
+          method: targetMethod,
+          token,
+          body: requestBody,
+        });
+        onCreated();
+      } catch (reqErr) {
+        const isNetErr = reqErr instanceof Error && 'status' in reqErr && (reqErr as { status: number }).status === 0;
+        if ((isNetErr || !navigator.onLine) && offlineSupported) {
+          enqueueCurrentAction();
+          return;
+        }
+        throw reqErr;
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'La création a échoué.');
     } finally {

@@ -3,7 +3,7 @@ const express = require('express');
 const fs = require('fs');
 const multer = require('multer');
 const path = require('path');
-const { importExcel, exportExcel } = require('../controllers/importexport.controller');
+const { importExcel, previewExcel, exportExcel } = require('../controllers/importexport.controller');
 const { authenticate } = require('../middlewares/auth');
 const { requirePermission } = require('../middlewares/roles');
 const router = express.Router();
@@ -41,6 +41,13 @@ router.post('/import/excel',
   requirePermission('import:excel'),
   upload.single('file'),
   importExcel
+);
+
+router.post('/import/preview',
+  authenticate,
+  requirePermission('import:excel'),
+  upload.single('file'),
+  previewExcel
 );
 
 router.get('/export/excel',

@@ -97,6 +97,13 @@ router.post('/:id/restore',
   ctrl.restore
 );
 
+router.delete('/:id/purge',
+  requirePermission('assets:delete'),
+  [param('id').isInt()],
+  validate,
+  ctrl.purge
+);
+
 // ── Pièces Jointes Équipements ──────────────────────────────────────────────
 router.get('/:id/attachments',
   requirePermission('assets:read'),

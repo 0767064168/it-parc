@@ -1904,6 +1904,21 @@ export function CsvImportAssetsModal({
     const ext = selected.name.split('.').pop()?.toLowerCase() ?? '';
     if (ext === 'xlsx' || ext === 'xls') {
       setIsExcelBinary(true);
+      setBusy(true);
+      try {
+        const formData = new FormData();
+        formData.append('file', selected);
+        const previewRes = await apiRequest<{ rows?: CsvPreviewRow[] }>('/importexport/import/preview', {
+          method: 'POST',
+          token,
+          body: formData,
+        });
+        setPreviewRows(Array.isArray(previewRes.rows) ? previewRes.rows : []);
+      } catch (err: unknown) {
+        setErrorMsg(err instanceof Error ? err.message : 'Impossible de pré-valider le fichier Excel.');
+      } finally {
+        setBusy(false);
+      }
       return;
     }
 

@@ -282,6 +282,14 @@ async function restore(id) {
 }
 
 /**
+ * Suppression définitive (hard delete) d'un asset déjà archivé
+ */
+async function hardDelete(id) {
+  await query('DELETE FROM assets WHERE id = ? AND deleted_at IS NOT NULL', [id]);
+  return true;
+}
+
+/**
  * Obtenir les valeurs distinctes pour les filtres
  */
 async function getFilterOptions() {
@@ -335,6 +343,6 @@ async function deleteAttachment(id) {
 }
 
 module.exports = { 
-  findAll, findById, search, create, update, archive, restore, getFilterOptions,
+  findAll, findById, search, create, update, archive, restore, hardDelete, getFilterOptions,
   findAttachments, findAttachmentById, createAttachment, deleteAttachment 
 };

@@ -22,6 +22,7 @@ const { query } = require('../config/db');
 const { success, error, paginated } = require('../utils/response');
 const { getPagination } = require('../utils/pagination');
 const logger = require('../utils/logger');
+const storageService = require('../services/storage.service');
 
 async function list(req, res) {
   try {
@@ -137,6 +138,32 @@ async function restore(req, res) {
   }
 }
 
+async function purge(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    const existing = await AssetModel.findById(id, true);
+    if (!existing) return error(res, 'Asset introuvable', 404);
+    if (!existing.deleted_at) {
+      return error(res, 'Archivez d\'abord l\'équipement avant de le supprimer définitivement', 400);
+    }
+
+    const attachments = await AssetModel.findAttachments(id);
+    for (const att of attachments || []) {
+      await storageService.deleteStoredFile(att.chemin);
+    }
+
+    await AssetModel.hardDelete(id);
+    await query(
+      'INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)',
+      [req.user.id, 'PURGE', 'asset', id, JSON.stringify({ asset_tag: existing.asset_tag })]
+    );
+    return success(res, null, 'Équipement supprimé définitivement');
+  } catch (err) {
+    logger.error('Erreur purge asset:', err);
+    return error(res, 'Erreur lors de la suppression définitive', 500);
+  }
+}
+
 async function filterOptions(req, res) {
   try {
     const options = await AssetModel.getFilterOptions();
@@ -173,11 +200,17 @@ async function uploadAttachment(req, res) {
 
     if (!req.file) return error(res, 'Aucun fichier reçu', 400);
 
+    const storedPath = await storageService.uploadFile(
+      req.file.path,
+      `assets/${assetId}/${req.file.filename}`,
+      req.file.mimetype
+    );
+
     const attachmentId = await AssetModel.createAttachment({
       asset_id: assetId,
       nom_fichier: req.file.filename,
       nom_original: req.file.originalname,
-      chemin: req.file.path,
+      chemin: storedPath,
       taille: req.file.size,
       type_mime: req.file.mimetype,
       uploaded_by: req.user.id,
@@ -200,12 +233,13 @@ async function downloadAttachment(req, res) {
     const attachment = await AssetModel.findAttachmentById(attachmentId);
     if (!attachment) return error(res, 'Fichier introuvable', 404);
 
-    const filePath = path.resolve(attachment.chemin);
-    if (!fs.existsSync(filePath)) return error(res, 'Fichier physique introuvable', 404);
-
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(attachment.nom_original)}"`);
-    res.setHeader('Content-Type', attachment.type_mime || 'application/octet-stream');
-    res.sendFile(filePath);
+    const sent = await storageService.sendStoredFile(
+      attachment.chemin,
+      res,
+      attachment.nom_original,
+      attachment.type_mime
+    );
+    if (!sent) return error(res, 'Fichier physique introuvable', 404);
   } catch (err) {
     logger.error('Erreur downloadAttachment asset:', err);
     return error(res, 'Erreur serveur', 500);
@@ -218,11 +252,7 @@ async function deleteAttachment(req, res) {
     const attachment = await AssetModel.findAttachmentById(attachmentId);
     if (!attachment) return error(res, 'Fichier introuvable', 404);
 
-    const filePath = path.resolve(attachment.chemin);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-
+    await storageService.deleteStoredFile(attachment.chemin);
     await AssetModel.deleteAttachment(attachmentId);
     return success(res, null, 'Fichier supprimé avec succès');
   } catch (err) {
@@ -425,6 +455,7 @@ module.exports = {
   update,
   archive,
   restore,
+  purge,
   filterOptions,
   listAttachments,
   uploadAttachment,

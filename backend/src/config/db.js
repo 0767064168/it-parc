@@ -198,7 +198,11 @@ async function transaction(callback) {
     await client.query('COMMIT');
     return result;
   } catch (err) {
-    await client.query('ROLLBACK');
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackErr) {
+      logger.error(`Erreur lors du rollback PostgreSQL: ${rollbackErr.message}`);
+    }
     throw err;
   } finally {
     client.release();

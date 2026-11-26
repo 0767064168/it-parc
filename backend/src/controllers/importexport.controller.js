@@ -476,4 +476,104 @@ async function exportExcel(req, res) {
   }
 }
 
-module.exports = { importExcel, exportExcel };
+function parseWorkbookRows(filePath) {
+  const wb = XLSX.readFile(filePath);
+  const sheetName = wb.SheetNames[0];
+  const ws = wb.Sheets[sheetName];
+  const rowsRaw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  if (!rowsRaw.length) return { errorMsg: 'Le fichier est vide ou le format est incorrect' };
+
+  let headerRowIndex = -1;
+  let colMap = {};
+  for (let r = 0; r < Math.min(rowsRaw.length, 10); r++) {
+    const row = rowsRaw[r];
+    if (!row || !row.length) continue;
+    const tempMap = {};
+    let matchCount = 0;
+    row.forEach((cell, colIndex) => {
+      if (cell === undefined || cell === null) return;
+      const norm = normalizeKey(cell.toString());
+      if (COLUMN_MAP[norm]) {
+        tempMap[colIndex] = COLUMN_MAP[norm];
+        matchCount++;
+      }
+    });
+    if (matchCount >= 2 || (matchCount >= 1 && Object.values(tempMap).includes('asset_tag'))) {
+      headerRowIndex = r;
+      colMap = tempMap;
+      break;
+    }
+  }
+
+  if (headerRowIndex === -1) {
+    return { errorMsg: 'Impossible de trouver les en-têtes de colonnes requis (ex: Nom Machine, marque, type) dans le fichier.' };
+  }
+  return { rowsRaw, headerRowIndex, colMap };
+}
+
+/**
+ * POST /api/importexport/import/preview
+ * Pré-validation sans écriture en base (CSV / XLSX / XLS)
+ */
+async function previewExcel(req, res) {
+  if (!req.file) return error(res, 'Fichier requis', 400);
+  try {
+    const parsed = parseWorkbookRows(req.file.path);
+    fs.unlink(req.file.path, () => {});
+    if (parsed.errorMsg) return error(res, parsed.errorMsg, 400);
+
+    const { rowsRaw, headerRowIndex, colMap } = parsed;
+    const seenTags = new Set();
+    const preview = [];
+
+    for (let i = headerRowIndex + 1; i < rowsRaw.length; i++) {
+      const row = rowsRaw[i];
+      if (!row || !row.length || row.every((c) => c === '' || c === null || c === undefined)) continue;
+
+      const mapped = {};
+      Object.entries(colMap).forEach(([colIndexStr, field]) => {
+        const colIndex = parseInt(colIndexStr, 10);
+        mapped[field] = row[colIndex] !== undefined && row[colIndex] !== null ? row[colIndex] : '';
+      });
+
+      const tag = (mapped.asset_tag || '').toString().trim().toUpperCase();
+      const messages = [];
+      let status = 'valid';
+
+      if (!tag) {
+        status = 'error';
+        messages.push('Nom Machine manquant (ligne ignorée)');
+      } else {
+        if (!NOMENCLATURE_REGEX.test(tag)) {
+          status = 'warning';
+          messages.push('Nomenclature non conforme (attendu : ÉQUIPEMENT-SOCIÉTÉ-DÉPARTEMENT-NOM)');
+        }
+        if (seenTags.has(tag)) {
+          if (status === 'valid') status = 'warning';
+          messages.push('Doublon dans le fichier (sera mis à jour)');
+        }
+        seenTags.add(tag);
+      }
+
+      preview.push({
+        line: i + 1,
+        asset_tag: tag || '—',
+        marque: (mapped.marque || '—').toString(),
+        modele: (mapped.modele || '—').toString(),
+        type: (mapped.type || 'autre').toString(),
+        site: (mapped.site || '—').toString(),
+        departement: (mapped.departement || '—').toString(),
+        status,
+        messages,
+      });
+    }
+
+    return success(res, { rows: preview, total: preview.length }, 'Pré-validation terminée');
+  } catch (err) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    logger.error('Erreur preview Excel:', err);
+    return error(res, 'Erreur lors de la pré-validation: ' + err.message, 500);
+  }
+}
+
+module.exports = { importExcel, previewExcel, exportExcel };

@@ -1,8 +1,8 @@
-import { apiRequest } from './api';
+import { apiRequest, ApiError } from './api';
 
 export type OfflineActionItem = {
   id: string;
-  type: 'AUDIT_SCAN' | 'INCIDENT_REPORT';
+  type: 'AUDIT_SCAN' | 'INCIDENT_REPORT' | 'ASSET_CREATE' | 'ASSET_UPDATE' | 'AFFECTATION_CREATE' | 'TICKET_CREATE';
   endpoint: string;
   method: 'POST' | 'PUT';
   body: Record<string, unknown>;
@@ -13,6 +13,7 @@ export type OfflineActionItem = {
 const STORAGE_KEY = 'parc-it-offline-queue';
 const MAX_OFFLINE_QUEUE_ITEMS = 100;
 export const OFFLINE_QUEUE_EVENT = 'parc-it:offline-queue-changed';
+export const OFFLINE_QUEUE_STORAGE_ERROR_EVENT = 'parc-it:offline-queue-storage-error';
 
 export function getOfflineQueue(): OfflineActionItem[] {
   try {
@@ -25,12 +26,14 @@ export function getOfflineQueue(): OfflineActionItem[] {
   }
 }
 
-function saveOfflineQueue(items: OfflineActionItem[]) {
+function saveOfflineQueue(items: OfflineActionItem[]): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items.slice(-MAX_OFFLINE_QUEUE_ITEMS)));
     window.dispatchEvent(new Event(OFFLINE_QUEUE_EVENT));
+    return true;
   } catch {
-    // ignore storage quota errors
+    window.dispatchEvent(new Event(OFFLINE_QUEUE_STORAGE_ERROR_EVENT));
+    return false;
   }
 }
 
@@ -41,7 +44,9 @@ export function enqueueOfflineAction(item: Omit<OfflineActionItem, 'id' | 'creat
     createdAt: new Date().toISOString(),
   };
   const current = getOfflineQueue();
-  saveOfflineQueue([...current, newItem]);
+  if (!saveOfflineQueue([...current.slice(-(MAX_OFFLINE_QUEUE_ITEMS - 1)), newItem])) {
+    return newItem;
+  }
   return newItem;
 }
 
@@ -68,9 +73,15 @@ export async function syncOfflineQueue(token: string | null): Promise<{ synced: 
       });
       synced += 1;
     } catch (err: unknown) {
-      // Si erreur réseau (status === 0), garder en file d'attente
-      const isNetworkError = err instanceof Error && 'status' in err && (err as { status: number }).status === 0;
-      if (isNetworkError || !navigator.onLine) {
+      const status = err instanceof ApiError ? err.status : 0;
+      const shouldRetry =
+        status === 0 ||
+        status === 401 ||
+        status === 403 ||
+        status === 408 ||
+        status === 429 ||
+        status >= 500;
+      if (shouldRetry || !navigator.onLine) {
         remaining.push(item);
         failed += 1;
       } else {
