@@ -75,11 +75,11 @@ async function getStats() {
   const alertes_garanties = await query(`
     SELECT a.id, a.\`Nom Machine\` as asset_tag, a.marque, a.modele, a.type, a.site,
            c.fin_garantie,
-           DATEDIFF(c.fin_garantie, CURDATE()) as jours_restants
+           (c.fin_garantie::date - CURRENT_DATE) as jours_restants
     FROM couts c
     JOIN assets a ON a.id = c.asset_id AND a.deleted_at IS NULL
     WHERE c.fin_garantie IS NOT NULL
-      AND c.fin_garantie <= DATE_ADD(CURDATE(), INTERVAL 90 DAY)
+      AND c.fin_garantie <= (CURRENT_DATE + INTERVAL '90 days')
     ORDER BY c.fin_garantie ASC
     LIMIT 10
   `);
@@ -106,8 +106,8 @@ async function getStats() {
   const [licences_expirant_90j] = await query(`
     SELECT COUNT(*) as count FROM licences
     WHERE date_expiration IS NOT NULL
-      AND date_expiration >= CURDATE()
-      AND date_expiration <= DATE_ADD(CURDATE(), INTERVAL 90 DAY)
+      AND date_expiration >= CURRENT_DATE
+      AND date_expiration <= (CURRENT_DATE + INTERVAL '90 days')
   `);
 
   // Consommables en stock bas (quantité <= seuil_alerte)
@@ -120,7 +120,7 @@ async function getStats() {
   const [maintenances_a_venir] = await query(`
     SELECT COUNT(*) as count FROM maintenances
     WHERE statut = 'planifie'
-      AND date_prevue >= CURDATE()
+      AND date_prevue >= CURRENT_DATE
   `);
 
   // Tickets ouverts ou urgents
@@ -164,7 +164,7 @@ async function getAdvancedReports() {
   `);
 
   const maintenances_costs = await query(`
-    SELECT DATE_FORMAT(date_prevue, '%Y-%m') as mois, SUM(cout) as total_cout, COUNT(*) as count
+    SELECT to_char(date_prevue, 'YYYY-MM') as mois, SUM(cout) as total_cout, COUNT(*) as count
     FROM maintenances
     WHERE date_prevue IS NOT NULL
     GROUP BY mois

@@ -36,7 +36,7 @@ const pool = new Proxy({}, {
   }
 });
 
-function convertMysqlSql(sql) {
+function prepareSql(sql) {
   let converted = '';
   let state = 'normal';
   let parameterIndex = 0;
@@ -105,39 +105,7 @@ function convertMysqlSql(sql) {
     }
   }
 
-  converted = converted
-    .replace(/\bCURDATE\s*\(\s*\)/gi, 'CURRENT_DATE')
-    .replace(/\bIFNULL\s*\(/gi, 'COALESCE(')
-    .replace(/\bLIKE\b/gi, 'ILIKE')
-    .replace(/DATE_ADD\(\s*CURRENT_DATE\s*,\s*INTERVAL\s+(\d+)\s+DAY\s*\)/gi, "(CURRENT_DATE + INTERVAL '$1 days')")
-    .replace(/DATE_FORMAT\(\s*([^,()]+)\s*,\s*'%Y-%m'\s*\)/gi, "to_char($1, 'YYYY-MM')")
-    .replace(/DATEDIFF\(\s*([^,()]+)\s*,\s*([^()]+)\)/gi, '(($1)::date - ($2)::date)');
-
-  const insert = converted.match(/\bINSERT\s+INTO\s+("?[\w]+"?)/i);
-  const conflictColumns = {
-    assets: '"Nom Machine"',
-    specs: 'asset_id',
-    securite: 'asset_id',
-    couts: 'asset_id',
-  };
-  const table = insert && insert[1].replace(/"/g, '').toLowerCase();
-  const conflictColumn = conflictColumns[table];
-
-  converted = converted.replace(
-    /\s+ON DUPLICATE KEY UPDATE\s+([\s\S]*)$/i,
-    (_, assignments) => {
-      if (!conflictColumn) {
-        throw new Error(`PostgreSQL conflict target is not configured for ${table || 'this table'}.`);
-      }
-      const postgresAssignments = assignments.replace(
-        /\bVALUES\s*\(\s*([a-zA-Z_][\w]*)\s*\)/gi,
-        'EXCLUDED.$1'
-      );
-      return ` ON CONFLICT (${conflictColumn}) DO UPDATE SET ${postgresAssignments}`;
-    }
-  );
-
-  return converted;
+  return converted.replace(/\bLIKE\b/gi, 'ILIKE');
 }
 
 function sanitizeParams(params) {
@@ -148,7 +116,7 @@ function sanitizeParams(params) {
   });
 }
 
-function toMysqlResult(result) {
+function toQueryResult(result) {
   return {
     insertId: result.rows[0] ? result.rows[0].id : undefined,
     affectedRows: result.rowCount,
@@ -163,14 +131,14 @@ async function testConnection() {
 
 async function query(sql, params = []) {
   try {
-    let postgresSql = convertMysqlSql(sql);
+    let postgresSql = prepareSql(sql);
     if (/^\s*INSERT\b/i.test(postgresSql) && !/\bRETURNING\b/i.test(postgresSql)) {
       postgresSql += ' RETURNING id';
     }
 
     const result = await pool.query(postgresSql, sanitizeParams(params));
     if (/^\s*(SELECT|WITH)\b/i.test(postgresSql)) return result.rows;
-    return toMysqlResult(result);
+    return toQueryResult(result);
   } catch (err) {
     logger.error(`DB Error: ${err.message}\nSQL: ${sql}\nParams: ${JSON.stringify(params)}`);
     throw err;
@@ -181,14 +149,14 @@ async function transaction(callback) {
   const client = await pool.connect();
   const conn = {
     async execute(sql, params = []) {
-      let postgresSql = convertMysqlSql(sql);
+      let postgresSql = prepareSql(sql);
       const isInsert = /^\s*INSERT\b/i.test(postgresSql);
       if (isInsert && !/\bRETURNING\b/i.test(postgresSql)) {
         postgresSql += ' RETURNING id';
       }
 
       const result = await client.query(postgresSql, sanitizeParams(params));
-      return isInsert ? [toMysqlResult(result)] : [result.rows];
+      return isInsert ? [toQueryResult(result)] : [result.rows];
     },
   };
 
@@ -209,4 +177,4 @@ async function transaction(callback) {
   }
 }
 
-module.exports = { pool, query, transaction, testConnection, convertMysqlSql, sanitizeParams };
+module.exports = { pool, query, transaction, testConnection, prepareSql, sanitizeParams };

@@ -43,7 +43,7 @@ async function create(req, res) {
     return success(res, created, 'Utilisateur créé', 201);
   } catch (err) {
     logger.error('Erreur create user:', err);
-    if (err.code === 'ER_DUP_ENTRY') return error(res, 'Email ou username déjà utilisé', 409);
+    if (err.code === '23505') return error(res, 'Email ou username déjà utilisé', 409);
     return error(res, 'Erreur serveur', 500);
   }
 }
@@ -94,7 +94,7 @@ async function remove(req, res) {
     return success(res, null, 'Utilisateur supprimé avec succès');
   } catch (err) {
     logger.error('Erreur remove user:', err);
-    if (err.code === 'ER_ROW_IS_REFERENCED_2') {
+    if (err.code === '23503') {
       return error(res, 'Impossible de supprimer cet utilisateur car il a des affectations ou des éléments liés.', 409);
     }
     return error(res, 'Erreur lors de la suppression de l\'utilisateur', 500);

@@ -75,7 +75,7 @@ async function create(req, res) {
     return success(res, created, 'Asset créé avec succès', 201);
   } catch (err) {
     logger.error('Erreur create asset:', err);
-    if (err.code === 'ER_DUP_ENTRY') return error(res, 'Asset Tag ou numéro de série déjà existant', 409);
+    if (err.code === '23505') return error(res, 'Asset Tag ou numéro de série déjà existant', 409);
     return error(res, 'Erreur lors de la création', 500);
   }
 }

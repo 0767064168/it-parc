@@ -268,11 +268,11 @@ async function importExcel(req, res) {
             await conn.execute(`
               INSERT INTO specs (asset_id, ram, stockage, cpu, os, version_os, mac_address, imei, ip_address, hostname)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              ON DUPLICATE KEY UPDATE
-                ram=VALUES(ram), stockage=VALUES(stockage), cpu=VALUES(cpu),
-                os=VALUES(os), version_os=VALUES(version_os),
-                mac_address=VALUES(mac_address), imei=VALUES(imei), ip_address=VALUES(ip_address),
-                hostname=VALUES(hostname)
+              ON CONFLICT (asset_id) DO UPDATE SET
+                ram=EXCLUDED.ram, stockage=EXCLUDED.stockage, cpu=EXCLUDED.cpu,
+                os=EXCLUDED.os, version_os=EXCLUDED.version_os,
+                mac_address=EXCLUDED.mac_address, imei=EXCLUDED.imei, ip_address=EXCLUDED.ip_address,
+                hostname=EXCLUDED.hostname
             `, [assetId, mapped.ram||null, mapped.stockage||null, mapped.cpu||null,
                 mapped.os||null, mapped.version_os||null, mapped.mac_address||null,
                 mapped.imei||null, mapped.ip_address||null, mapped.hostname||null]);
@@ -283,9 +283,9 @@ async function importExcel(req, res) {
             await conn.execute(`
               INSERT INTO securite (asset_id, defender, edr, intune, entra_id, bitlocker, onedrive)
               VALUES (?, ?, ?, ?, ?, ?, ?)
-              ON DUPLICATE KEY UPDATE
-                defender=VALUES(defender), edr=VALUES(edr), intune=VALUES(intune),
-                entra_id=VALUES(entra_id), bitlocker=VALUES(bitlocker), onedrive=VALUES(onedrive)
+              ON CONFLICT (asset_id) DO UPDATE SET
+                defender=EXCLUDED.defender, edr=EXCLUDED.edr, intune=EXCLUDED.intune,
+                entra_id=EXCLUDED.entra_id, bitlocker=EXCLUDED.bitlocker, onedrive=EXCLUDED.onedrive
             `, [assetId, parseBool(mapped.defender), parseBool(mapped.edr),
                 parseBool(mapped.intune), parseBool(mapped.entra_id),
                 parseBool(mapped.bitlocker), parseBool(mapped.onedrive)]);
@@ -297,10 +297,10 @@ async function importExcel(req, res) {
             await conn.execute(`
               INSERT INTO couts (asset_id, prix, fournisseur, bon_commande, date_acquisition, fin_garantie)
               VALUES (?, ?, ?, ?, ?, ?)
-              ON DUPLICATE KEY UPDATE
-                prix=VALUES(prix), fournisseur=VALUES(fournisseur),
-                bon_commande=VALUES(bon_commande), date_acquisition=VALUES(date_acquisition),
-                fin_garantie=VALUES(fin_garantie)
+              ON CONFLICT (asset_id) DO UPDATE SET
+                prix=EXCLUDED.prix, fournisseur=EXCLUDED.fournisseur,
+                bon_commande=EXCLUDED.bon_commande, date_acquisition=EXCLUDED.date_acquisition,
+                fin_garantie=EXCLUDED.fin_garantie
             `, [assetId, prix, mapped.fournisseur||null, mapped.bon_commande||null,
                 parseDate(mapped.date_acquisition), parseDate(mapped.fin_garantie)]);
           }

@@ -63,7 +63,7 @@ async function allocate(licenceId, userId) {
   if (existing) return;
 
   await query(
-    'INSERT INTO licence_allocations (licence_id, user_id, date_allocation) VALUES (?, ?, CURDATE())',
+    'INSERT INTO licence_allocations (licence_id, user_id, date_allocation) VALUES (?, ?, CURRENT_DATE)',
     [licenceId, userId]
   );
 }

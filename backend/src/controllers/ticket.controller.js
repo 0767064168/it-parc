@@ -136,7 +136,7 @@ async function create(req, res) {
       if (type === 'incident' && asset_id) {
         // Optionnel : on peut changer le statut de l'asset si besoin
         await conn.execute(
-          'UPDATE assets SET notes = CONCAT(IFNULL(notes, ""), "\n[Incident ouvert: ", ?, "]") WHERE id = ?',
+          "UPDATE assets SET notes = CONCAT(COALESCE(notes, ''), '\n[Incident ouvert: ', ?, ']') WHERE id = ?",
           [numero, asset_id]
         );
       }
@@ -724,7 +724,7 @@ async function getDashboardStats(req, res) {
     const [{ resolusAujourdhui }] = await query(`
       SELECT COUNT(*) as resolusAujourdhui 
       FROM tickets 
-      WHERE statut IN ('resolu', 'ferme') AND DATE(closed_at) = CURDATE()
+      WHERE statut IN ('resolu', 'ferme') AND DATE(closed_at) = CURRENT_DATE
     `);
 
     // 4. Heatmap par sites
@@ -784,7 +784,7 @@ async function getReports(req, res) {
 
     // 1. Volume de tickets par mois (sur les 6 derniers mois)
     const volumeParPeriode = await query(`
-      SELECT DATE_FORMAT(created_at, '%Y-%m') as periode, COUNT(*) as count 
+      SELECT to_char(created_at, 'YYYY-MM') as periode, COUNT(*) as count 
       FROM tickets 
       WHERE 1=1 ${dateFilter}
       GROUP BY periode 

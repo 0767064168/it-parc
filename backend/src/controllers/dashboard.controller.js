@@ -57,16 +57,16 @@ async function triggerExpiringAlertsEmail(req, res) {
     const licencesExpirant = await query(`
       SELECT id, nom, editeur, date_expiration FROM licences
       WHERE date_expiration IS NOT NULL
-        AND date_expiration >= CURDATE()
-        AND date_expiration <= DATE_ADD(CURDATE(), INTERVAL ${licencesJours} DAY)
+        AND date_expiration >= CURRENT_DATE
+        AND date_expiration <= (CURRENT_DATE + INTERVAL '${licencesJours} days')
     `);
     const garantiesExpirant = await query(`
       SELECT a.id, a.\`Nom Machine\` as asset_tag, a.marque, a.modele, c.fin_garantie
       FROM couts c
       JOIN assets a ON a.id = c.asset_id AND a.deleted_at IS NULL
       WHERE c.fin_garantie IS NOT NULL
-        AND c.fin_garantie >= CURDATE()
-        AND c.fin_garantie <= DATE_ADD(CURDATE(), INTERVAL ${garantiesJours} DAY)
+        AND c.fin_garantie >= CURRENT_DATE
+        AND c.fin_garantie <= (CURRENT_DATE + INTERVAL '${garantiesJours} days')
     `);
     const admins = await query("SELECT email FROM auth_users WHERE role IN ('admin', 'technicien') AND actif = 1 AND email IS NOT NULL");
     const adminEmails = admins.map(a => a.email).filter(Boolean);
