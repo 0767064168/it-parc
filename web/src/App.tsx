@@ -57,6 +57,7 @@ import {
   PenTool,
   Coins,
   ClipboardCheck,
+  ClipboardList,
   ShieldAlert,
   UserCheck,
   type LucideIcon,
@@ -65,6 +66,7 @@ import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSe
 import { apiDownload, apiRequest } from './api';
 import { useAuth } from './auth';
 import { QrScannerModal, BatchQrLabelsModal, SignaturePadModal, CsvImportAssetsModal, AuditsPage, ActivityLogsPage, MonEspacePage, SettingsPage } from './AuditAndTools';
+import { EquipmentRequestsPage } from './EquipmentRequests';
 import { enqueueOfflineAction, getOfflineQueue, syncOfflineQueue, OFFLINE_QUEUE_EVENT } from './offlineQueue';
 
 type DashboardData = {
@@ -375,6 +377,7 @@ const modules: Record<string, ModuleDefinition> = {
 const navigation: NavigationItem[] = [
   { label: 'Tableau de bord', path: '/', icon: LayoutDashboard },
   { label: 'Mon Espace IT', path: '/mes-equipements', icon: UserCheck },
+  { label: 'Demandes de matériel', path: '/demandes-materiel', icon: ClipboardList },
   { label: 'Inventaire du parc', path: '/assets', icon: Laptop },
   { label: 'Affectations', path: '/affectations', icon: ArrowLeftRight },
   { label: 'Tickets IT', path: '/tickets', icon: Ticket },
@@ -398,6 +401,7 @@ const pageTitles: Record<string, { title: string; subtitle: string; icon: Lucide
     icon: navigationIcon(path),
   }])),
   '/mes-equipements': { title: 'Mon Espace IT', subtitle: 'Mes équipements attribués et signalement rapide', icon: UserCheck },
+  '/demandes-materiel': { title: 'Demandes de matériel', subtitle: 'Soumission, validation et suivi des demandes', icon: ClipboardList },
   '/audits': { title: 'Audits & Inventaire', subtitle: 'Campagnes d\'inventaire physique et pointage terrain', icon: ClipboardCheck },
   '/logs': { title: 'Journal d\'Audit', subtitle: 'Traçabilité des actions et alertes e-mail', icon: ShieldAlert },
   '/settings': { title: 'Paramètres DSI', subtitle: 'Règles d\'amortissement, seuils et messagerie SMTP', icon: Settings },
@@ -766,6 +770,7 @@ function AppLayout() {
               <Route key={path} path={path} element={<ModulePage path={path} />} />
             ))}
             <Route path="/mes-equipements" element={<MonEspacePage />} />
+            <Route path="/demandes-materiel" element={<EquipmentRequestsPage />} />
             <Route path="/audits" element={<AuditsPage />} />
             <Route path="/logs" element={<ActivityLogsPage />} />
             <Route path="/settings" element={<SettingsPage />} />

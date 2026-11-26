@@ -35,6 +35,7 @@ const publicTicketRoutes = require('./src/routes/public_ticket.routes');
 const auditRoutes = require('./src/routes/audit.routes');
 const logsRoutes = require('./src/routes/logs.routes');
 const settingsRoutes = require('./src/routes/settings.routes');
+const equipmentRequestRoutes = require('./src/routes/equipment_request.routes');
 
 const http = require('http');
 const { Server } = require('socket.io');
@@ -191,6 +192,7 @@ app.use('/api/search', searchRoutes);
 app.use('/api/audits', auditRoutes);
 app.use('/api/logs', logsRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/equipment-requests', equipmentRequestRoutes);
 app.use('/api/public', publicTicketRoutes);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/public', express.static(path.join(__dirname, 'public')));

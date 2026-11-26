@@ -8,6 +8,7 @@ L’application Web communique exclusivement avec l’API Node.js/Express ; les 
 - **`supabase/migrations/`** : Migrations SQL séquentielles standard Supabase (ex: `20261021000001_initial_schema.sql`).
 - **`supabase/schema.sql`** : Schéma global de référence PostgreSQL / Supabase.
 - **`supabase/seed.sql`** : Données initiales et de démonstration prêtes pour Supabase (utilisateurs, équipements, tickets, conformité, SLA, etc.).
+- **`20261126000002_equipment_requests.sql`** : Table des demandes de matériel, décisions IT et liens vers les équipements et affectations livrés.
 
 ## 2. Configuration (`.env`)
 
