@@ -1108,19 +1108,19 @@ export function ActivityLogsPage() {
 
       {stats && (
         <div className="finance-kpi-grid" style={{ marginBottom: 20 }}>
-          <div className="finance-card">
+          <div className="finance-card audit-kpi-card audit-kpi-blue">
             <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Événements Tracés</span>
-            <div className="finance-amount" style={{ color: '#0284c7' }}>{Number(stats.total).toLocaleString('fr-FR')}</div>
+            <div className="finance-amount" style={{ color: '#2563eb' }}>{Number(stats.total).toLocaleString('fr-FR')}</div>
             <span style={{ fontSize: 11, color: '#64748b' }}>Historique total enregistré</span>
           </div>
-          <div className="finance-card">
+          <div className="finance-card audit-kpi-card audit-kpi-orange">
             <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Activité (24h)</span>
-            <div className="finance-amount" style={{ color: '#16a34a' }}>{Number(stats.last_24h).toLocaleString('fr-FR')}</div>
+            <div className="finance-amount" style={{ color: '#ea580c' }}>{Number(stats.last_24h).toLocaleString('fr-FR')}</div>
             <span style={{ fontSize: 11, color: '#64748b' }}>Opérations récentes</span>
           </div>
-          <div className="finance-card">
+          <div className="finance-card audit-kpi-card audit-kpi-yellow">
             <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Action la plus fréquente</span>
-            <div className="finance-amount" style={{ fontSize: 16, color: '#7c3aed' }}>
+            <div className="finance-amount" style={{ fontSize: 16, color: '#ca8a04' }}>
               {stats.by_action?.[0]?.action || '—'}
             </div>
             <span style={{ fontSize: 11, color: '#64748b' }}>
