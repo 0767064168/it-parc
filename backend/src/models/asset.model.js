@@ -259,7 +259,7 @@ async function update(id, data) {
  */
 async function archive(id, motif = null) {
   await query(
-    "UPDATE assets SET statut = ?, deleted_at = NOW(), updated_at = NOW(), notes = CONCAT(COALESCE(notes, ''), ' | Archivé: ', ?) WHERE id = ?",
+    "UPDATE assets SET statut = ?, deleted_at = NOW(), updated_at = NOW(), notes = CONCAT(COALESCE(notes, ''), ' | Archivé: ', CAST(? AS TEXT)) WHERE id = ?",
     ['reforme', motif || 'Archivé', id]
   );
   // Clôturer les affectations actives

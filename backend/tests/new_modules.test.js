@@ -172,7 +172,7 @@ describe('Nouveaux modules DSI (Audits, Logs, Mon Espace, Paramètres, Amortisse
     await assetCtrl.archive(req, res);
     expect(res.status).toHaveBeenCalledWith(200);
     expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE assets SET statut = ?'),
+      expect.stringContaining('CAST(? AS TEXT)'),
       ['reforme', 'Matériel réformé', 42]
     );
   });
