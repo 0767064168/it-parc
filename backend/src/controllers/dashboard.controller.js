@@ -184,4 +184,12 @@ async function reportMonIncident(req, res) {
   }
 }
 
-module.exports = { getStats, getAdvancedReports, getAmortissement, triggerExpiringAlertsEmail, getMonEspace, reportMonIncident };
+async function cronExpiringAlerts(req, res) {
+  const secret = process.env.CRON_SECRET;
+  if (secret && req.headers.authorization !== `Bearer ${secret}`) {
+    return error(res, 'Non autorisé', 401);
+  }
+  return triggerExpiringAlertsEmail(req, res);
+}
+
+module.exports = { getStats, getAdvancedReports, getAmortissement, triggerExpiringAlertsEmail, cronExpiringAlerts, getMonEspace, reportMonIncident };
