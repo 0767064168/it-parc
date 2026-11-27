@@ -248,7 +248,9 @@ const modules: Record<string, ModuleDefinition> = {
     columns: [
       { key: 'numero', label: 'Numéro' }, { key: 'titre', label: 'Sujet' },
       { key: 'type', label: 'Type' }, { key: 'priorite', label: 'Priorité' },
-      { key: 'statut', label: 'État' }, { key: 'created_at', label: 'Créé le' },
+      { key: 'statut', label: 'État' }, { key: 'technicien_username', label: 'Technicien' },
+      { key: 'asset_tag', label: 'Équipement' }, { key: 'site', label: 'Site' },
+      { key: 'sla_deadline', label: 'Échéance SLA' }, { key: 'created_at', label: 'Créé le' },
     ],
     createFields: [
       { name: 'titre', label: 'Sujet du ticket', required: true, placeholder: 'Ex: Problème d\'écran, mot de passe…' },
@@ -1288,6 +1290,12 @@ function cellText(value: unknown): string {
   return String(value);
 }
 
+function formatDateTime(value: unknown) {
+  if (value === null || value === undefined || value === '') return '—';
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? cellText(value) : date.toLocaleString('fr-FR');
+}
+
 function ModulePage({ path }: { path: string }) {
   const definition = modules[path];
   const { token, user } = useAuth();
@@ -1304,6 +1312,9 @@ function ModulePage({ path }: { path: string }) {
   const [siteFilter, setSiteFilter] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [statutFilterState, setStatutFilterState] = useState('');
+  const [ticketStatusFilter, setTicketStatusFilter] = useState('');
+  const [ticketPriorityFilter, setTicketPriorityFilter] = useState('');
+  const [ticketTypeFilter, setTicketTypeFilter] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
   const [pageLimit, setPageLimit] = useState(20);
@@ -1594,7 +1605,11 @@ function ModulePage({ path }: { path: string }) {
       token,
       query: {
         ...(definition.paginated ? { page, limit: pageLimit } : {}),
-        ...(statusFilter ? { statut: statusFilter } : statutFilterState ? { statut: statutFilterState } : {}),
+        ...(path === '/tickets' && ticketStatusFilter
+          ? { statut: ticketStatusFilter }
+          : statusFilter ? { statut: statusFilter } : statutFilterState ? { statut: statutFilterState } : {}),
+        ...(path === '/tickets' && ticketPriorityFilter ? { priorite: ticketPriorityFilter } : {}),
+        ...(path === '/tickets' && ticketTypeFilter ? { type: ticketTypeFilter } : {}),
         ...(siteFilter ? { site: siteFilter } : {}),
         ...(deptFilter ? { departement: deptFilter } : {}),
         ...(path === '/assets' && showArchived ? { archived: 'true' } : {}),
@@ -1608,7 +1623,7 @@ function ModulePage({ path }: { path: string }) {
       if (active) setLoading(false);
     });
     return () => { active = false; };
-  }, [definition, path, page, pageLimit, refreshKey, statusFilter, statutFilterState, siteFilter, deptFilter, showArchived, submittedQuery, token]);
+  }, [definition, path, page, pageLimit, refreshKey, statusFilter, statutFilterState, ticketStatusFilter, ticketPriorityFilter, ticketTypeFilter, siteFilter, deptFilter, showArchived, submittedQuery, token]);
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1715,6 +1730,64 @@ function ModulePage({ path }: { path: string }) {
                   )}
                 </div>
               )
+            ) : path === '/tickets' ? (
+              <div className="ticket-detail-view">
+                <section className="ticket-detail-summary">
+                  <div className="ticket-detail-heading">
+                    <span className="ticket-detail-number">{cellText(selectedRow.numero)}</span>
+                    <div className="ticket-detail-badges">
+                      <span className={`status-badge ${statusTone(String(selectedRow.statut ?? ''))}`}>
+                        {cellText(selectedRow.statut).replace(/_/g, ' ')}
+                      </span>
+                      <span className={`status-badge ${priorityBadge(String(selectedRow.priorite ?? ''))}`}>
+                        {cellText(selectedRow.priorite)}
+                      </span>
+                    </div>
+                  </div>
+                  <h3>{cellText(selectedRow.titre)}</h3>
+                  <div className="ticket-detail-description">
+                    <h4>Description</h4>
+                    <p>{cellText(selectedRow.description)}</p>
+                  </div>
+                </section>
+                <div className="detail-grid ticket-detail-grid">
+                  {[
+                    { label: 'Type', value: cellText(selectedRow.type).replace(/_/g, ' ') },
+                    {
+                      label: 'Demandeur',
+                      value: [selectedRow.createur_prenom, selectedRow.createur_nom]
+                        .map(cellText)
+                        .filter((value) => value !== '—')
+                        .join(' ') || cellText(selectedRow.createur_username),
+                    },
+                    {
+                      label: 'Technicien',
+                      value: [selectedRow.technicien_prenom, selectedRow.technicien_nom]
+                        .map(cellText)
+                        .filter((value) => value !== '—')
+                        .join(' ') || cellText(selectedRow.technicien_username),
+                    },
+                    { label: 'Équipement', value: cellText(selectedRow.asset_tag) },
+                    { label: 'Site', value: cellText(selectedRow.site) },
+                    { label: 'Échéance SLA', value: formatDateTime(selectedRow.sla_deadline) },
+                    { label: 'Créé le', value: formatDateTime(selectedRow.created_at) },
+                    { label: 'Mis à jour le', value: formatDateTime(selectedRow.updated_at) },
+                    { label: 'Clôturé le', value: formatDateTime(selectedRow.closed_at) },
+                    {
+                      label: 'Temps de résolution',
+                      value: selectedRow.temps_resolution_min === null || selectedRow.temps_resolution_min === undefined
+                        ? '—'
+                        : `${cellText(selectedRow.temps_resolution_min)} min`,
+                    },
+                    { label: 'Note de satisfaction', value: cellText(selectedRow.note_satisfaction) },
+                  ].map((field) => (
+                    <div className="detail-item" key={field.label}>
+                      <span>{field.label}</span>
+                      <strong>{field.value}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : (
               <div className="detail-grid">
                 {Object.entries(selectedRow)
@@ -2152,6 +2225,75 @@ function ModulePage({ path }: { path: string }) {
             )}
           </div>
         )}
+        {path === '/tickets' && (
+          <div className="filter-bar ticket-filter-bar">
+            <div className="filter-group">
+              <span className="filter-label">Statut :</span>
+              <select
+                className="filter-select"
+                aria-label="Filtrer les tickets par statut"
+                value={ticketStatusFilter}
+                onChange={(event) => { setTicketStatusFilter(event.target.value); setPage(1); }}
+              >
+                <option value="">Tous les statuts</option>
+                <option value="ouvert">Ouvert</option>
+                <option value="rouvert">Réouvert</option>
+                <option value="en_cours">En cours</option>
+                <option value="en_attente">En attente</option>
+                <option value="resolu">Résolu</option>
+                <option value="ferme">Fermé</option>
+                <option value="annule">Annulé</option>
+              </select>
+            </div>
+            <div className="filter-group">
+              <span className="filter-label">Priorité :</span>
+              <select
+                className="filter-select"
+                aria-label="Filtrer les tickets par priorité"
+                value={ticketPriorityFilter}
+                onChange={(event) => { setTicketPriorityFilter(event.target.value); setPage(1); }}
+              >
+                <option value="">Toutes les priorités</option>
+                <option value="critique">Critique</option>
+                <option value="haute">Haute</option>
+                <option value="moyenne">Moyenne</option>
+                <option value="basse">Basse</option>
+              </select>
+            </div>
+            <div className="filter-group">
+              <span className="filter-label">Type :</span>
+              <select
+                className="filter-select"
+                aria-label="Filtrer les tickets par type"
+                value={ticketTypeFilter}
+                onChange={(event) => { setTicketTypeFilter(event.target.value); setPage(1); }}
+              >
+                <option value="">Tous les types</option>
+                <option value="incident">Incident</option>
+                <option value="demande_materiel">Demande matériel</option>
+                <option value="maintenance">Maintenance</option>
+                <option value="acces_logiciel">Accès logiciel</option>
+                <option value="demande">Demande</option>
+                <option value="assistance">Assistance</option>
+                <option value="panne_materielle">Panne matérielle</option>
+              </select>
+            </div>
+            {(ticketStatusFilter || ticketPriorityFilter || ticketTypeFilter) && (
+              <button
+                type="button"
+                className="clear-filter-btn"
+                onClick={() => {
+                  setTicketStatusFilter('');
+                  setTicketPriorityFilter('');
+                  setTicketTypeFilter('');
+                  setPage(1);
+                }}
+              >
+                <X size={12} /> Réinitialiser
+              </button>
+            )}
+          </div>
+        )}
         <div className="module-toolbar">
           <div className="module-count">
             {loading
@@ -2214,6 +2356,8 @@ function ModulePage({ path }: { path: string }) {
                         );
                       } else if (column.key === 'priorite' || column.key.endsWith('.priorite')) {
                         content = <span className={`status-badge ${priorityBadge(text)}`}>{text}</span>;
+                      } else if (column.key === 'created_at' || column.key === 'sla_deadline') {
+                        content = formatDateTime(value);
                       } else if (column.key === 'asset_tag' || column.key === 'Nom Machine' || column.key === 'nom_machine') {
                         content = (
                           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
