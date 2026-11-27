@@ -2311,7 +2311,13 @@ function ModulePage({ path }: { path: string }) {
         {successMessage && <div className="alert alert-success" role="status"><div><strong>Opération réussie</strong><span>{successMessage}</span></div><button className="alert-dismiss" onClick={() => setSuccessMessage('')} aria-label="Fermer">×</button></div>}
         {error && <div className="alert alert-error" role="alert"><div><strong>Erreur de récupération des données</strong><span>{error}</span></div><button className="button button-secondary" onClick={() => setRefreshKey((current) => current + 1)}>Réessayer</button></div>}
         {loading ? <div className="loading-lines"><i /><i /><i /></div> : (
-          <div className="table-scroll module-table-scroll">
+          <>
+          {path === '/tickets' && <p className="ticket-table-scroll-hint">Faites défiler horizontalement pour afficher toutes les colonnes.</p>}
+          <div
+            className={`table-scroll module-table-scroll ${path === '/tickets' ? 'ticket-table-scroll' : ''}`}
+            tabIndex={path === '/tickets' ? 0 : undefined}
+            aria-label={path === '/tickets' ? 'Tableau des tickets, défilement horizontal disponible' : undefined}
+          >
             <table className="data-table module-table">
               <thead>
                 <tr>
@@ -2532,6 +2538,7 @@ function ModulePage({ path }: { path: string }) {
               </tbody>
             </table>
           </div>
+          </>
         )}
         {definition.paginated && <div className="pagination">
           <button className="button button-secondary" disabled={page <= 1 || loading} onClick={() => setPage((current) => Math.max(1, current - 1))}>Précédent</button>
