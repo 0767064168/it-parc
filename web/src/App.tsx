@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   Activity,
   Archive,
@@ -10,8 +10,6 @@ import {
   BriefcaseBusiness,
   ChartNoAxesCombined,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   CircleAlert,
   CircleHelp,
   ArrowRight,
@@ -20,9 +18,7 @@ import {
   HardDrive,
   Laptop,
   LayoutDashboard,
-  LayoutGrid,
   LifeBuoy,
-  List,
   LogOut,
   Menu,
   Package,
@@ -1292,16 +1288,6 @@ function cellText(value: unknown): string {
   return String(value);
 }
 
-const ticketKanbanStatuses = [
-  { value: 'ouvert', label: 'Ouvert' },
-  { value: 'rouvert', label: 'Réouvert' },
-  { value: 'en_cours', label: 'En cours' },
-  { value: 'en_attente', label: 'En attente' },
-  { value: 'resolu', label: 'Résolu' },
-  { value: 'ferme', label: 'Fermé' },
-  { value: 'annule', label: 'Annulé' },
-] as const;
-
 function ModulePage({ path }: { path: string }) {
   const definition = modules[path];
   const { token, user } = useAuth();
@@ -1321,9 +1307,6 @@ function ModulePage({ path }: { path: string }) {
   const [showArchived, setShowArchived] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
   const [pageLimit, setPageLimit] = useState(20);
-  const [ticketView, setTicketView] = useState<'kanban' | 'list'>('kanban');
-  const ticketBoardRef = useRef<HTMLDivElement>(null);
-  const isTicketKanban = path === '/tickets' && ticketView === 'kanban';
 
   const rows = useMemo(() => extractRows(payload), [payload]);
   const filteredRows = useMemo(() => {
@@ -1366,15 +1349,6 @@ function ModulePage({ path }: { path: string }) {
       setSortField(key);
       setSortOrder('asc');
     }
-  }
-
-  function scrollTicketBoardTo(edge: 'start' | 'end') {
-    const board = ticketBoardRef.current;
-    if (!board) return;
-    board.scrollTo({
-      left: edge === 'start' ? 0 : board.scrollWidth,
-      behavior: 'smooth',
-    });
   }
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -2182,128 +2156,19 @@ function ModulePage({ path }: { path: string }) {
           <div className="module-count">
             {loading
               ? 'Chargement…'
-              : path === '/tickets' && typeof totalCount === 'number'
-                ? `${filteredRows.length} ticket${filteredRows.length === 1 ? '' : 's'} sur cette page · ${totalCount} résultat${totalCount === 1 ? '' : 's'} au total`
-                : `${filteredRows.length} résultat${filteredRows.length > 1 ? 's' : ''}${filteredRows.length !== rows.length ? ` (sur ${rows.length})` : ''}`}
+              : `${filteredRows.length} résultat${filteredRows.length > 1 ? 's' : ''}${filteredRows.length !== rows.length ? ` (sur ${rows.length})` : ''}`}
           </div>
-          <div className="module-toolbar-controls">
-            {path === '/tickets' && (
-              <div className="ticket-view-toggle" role="group" aria-label="Mode d’affichage des tickets">
-                <button
-                  type="button"
-                  className={`button button-secondary ${ticketView === 'kanban' ? 'ticket-view-active' : ''}`}
-                  aria-pressed={ticketView === 'kanban'}
-                  onClick={() => setTicketView('kanban')}
-                >
-                  <LayoutGrid size={14} /> Kanban
-                </button>
-                <button
-                  type="button"
-                  className={`button button-secondary ${ticketView === 'list' ? 'ticket-view-active' : ''}`}
-                  aria-pressed={ticketView === 'list'}
-                  onClick={() => setTicketView('list')}
-                >
-                  <List size={14} /> Liste
-                </button>
-              </div>
-            )}
-            {definition.canSearch && (
-              <form className="table-search" onSubmit={submitSearch}>
-                <Search size={15} />
-                <input aria-label={`Rechercher dans ${details.title}`} placeholder="Rechercher…" value={query} onChange={(event) => setQuery(event.target.value)} />
-                <button type="submit">Rechercher</button>
-              </form>
-            )}
-          </div>
+          {definition.canSearch && (
+            <form className="table-search" onSubmit={submitSearch}>
+              <Search size={15} />
+              <input aria-label={`Rechercher dans ${details.title}`} placeholder="Rechercher…" value={query} onChange={(event) => setQuery(event.target.value)} />
+              <button type="submit">Rechercher</button>
+            </form>
+          )}
         </div>
         {successMessage && <div className="alert alert-success" role="status"><div><strong>Opération réussie</strong><span>{successMessage}</span></div><button className="alert-dismiss" onClick={() => setSuccessMessage('')} aria-label="Fermer">×</button></div>}
         {error && <div className="alert alert-error" role="alert"><div><strong>Erreur de récupération des données</strong><span>{error}</span></div><button className="button button-secondary" onClick={() => setRefreshKey((current) => current + 1)}>Réessayer</button></div>}
-        {loading ? <div className="loading-lines"><i /><i /><i /></div> : isTicketKanban ? (
-          <>
-            <div className="ticket-kanban-navigation">
-              <span>Faites défiler horizontalement pour afficher toutes les colonnes.</span>
-              <div>
-                <button type="button" className="button button-secondary" onClick={() => scrollTicketBoardTo('start')}>
-                  <ChevronLeft size={14} /> Début
-                </button>
-                <button type="button" className="button button-secondary" onClick={() => scrollTicketBoardTo('end')}>
-                  Fin <ChevronRight size={14} />
-                </button>
-              </div>
-            </div>
-          <div className="ticket-kanban-scroll" ref={ticketBoardRef} tabIndex={0} aria-label="Colonnes du tableau Kanban des tickets">
-            <div className="ticket-kanban">
-              {ticketKanbanStatuses.map((status) => {
-                const laneRows = sortedRows.filter((row) => row.statut === status.value);
-                return (
-                  <section className="ticket-kanban-column" key={status.value} aria-label={`${status.label} : ${laneRows.length} ticket${laneRows.length === 1 ? '' : 's'}`}>
-                    <header className="ticket-kanban-heading">
-                      <h3>{status.label}</h3>
-                      <span className="ticket-kanban-count">{laneRows.length}</span>
-                    </header>
-                    <div className="ticket-kanban-cards">
-                      {laneRows.length ? laneRows.map((row) => {
-                        const requesterName = [row.createur_prenom, row.createur_nom]
-                          .map(cellText)
-                          .filter((value) => value !== '—')
-                          .join(' ') || cellText(row.createur_username);
-                        const technicianName = [row.technicien_prenom, row.technicien_nom]
-                          .map(cellText)
-                          .filter((value) => value !== '—')
-                          .join(' ') || cellText(row.technicien_username);
-                        const createdAt = row.created_at ? new Date(String(row.created_at)) : null;
-                        const createdLabel = createdAt && !Number.isNaN(createdAt.getTime())
-                          ? createdAt.toLocaleDateString('fr-FR')
-                          : '—';
-                        const slaDate = row.sla_deadline ? new Date(String(row.sla_deadline)) : null;
-                        const slaTimestamp = slaDate?.getTime() ?? Number.NaN;
-                        const isActiveTicket = !['resolu', 'ferme', 'annule'].includes(String(row.statut));
-                        const slaOverdue = isActiveTicket && Number.isFinite(slaTimestamp) && slaTimestamp < Date.now();
-                        const slaLabel = Number.isFinite(slaTimestamp)
-                          ? slaDate?.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-                          : null;
-                        return (
-                          <button
-                            type="button"
-                            className="ticket-kanban-card"
-                            key={String(row.id)}
-                            onClick={() => setSelectedRow(row)}
-                            aria-label={`Ticket ${cellText(row.numero)} : ${cellText(row.titre)}, ${status.label}`}
-                          >
-                            <span className="ticket-kanban-card-top">
-                              <span className="ticket-kanban-number">{cellText(row.numero)}</span>
-                              <span className={`status-badge ${priorityBadge(String(row.priorite ?? ''))}`}>{cellText(row.priorite)}</span>
-                            </span>
-                            <strong className="ticket-kanban-title">{cellText(row.titre)}</strong>
-                            <span className="ticket-kanban-type">{cellText(row.type).replace(/_/g, ' ')}</span>
-                            {Boolean(row.description) && <span className="ticket-kanban-description">{cellText(row.description)}</span>}
-                            {(row.asset_tag || technicianName !== '—') && (
-                              <span className="ticket-kanban-extra">
-                                {Boolean(row.asset_tag) && <span>Matériel : {cellText(row.asset_tag)}</span>}
-                                {technicianName !== '—' && <span>Technicien : {technicianName}</span>}
-                              </span>
-                            )}
-                            <span className="ticket-kanban-meta">
-                              <span>{requesterName}</span>
-                              {Boolean(row.site) && <span>{cellText(row.site)}</span>}
-                            </span>
-                            {slaLabel && (
-                              <span className={`ticket-kanban-sla ${slaOverdue ? 'overdue' : ''}`}>
-                                {slaOverdue ? 'SLA dépassé' : 'Échéance SLA'} · {slaLabel}
-                              </span>
-                            )}
-                            <span className="ticket-kanban-date">{createdLabel}</span>
-                          </button>
-                        );
-                      }) : <p className="ticket-kanban-empty">Aucun ticket</p>}
-                    </div>
-                  </section>
-                );
-              })}
-            </div>
-          </div>
-          </>
-        ) : (
+        {loading ? <div className="loading-lines"><i /><i /><i /></div> : (
           <div className="table-scroll module-table-scroll">
             <table className="data-table module-table">
               <thead>
