@@ -230,7 +230,7 @@ async function getAdvancedReports() {
   };
 }
 
-async function getAmortissementStats() {
+async function getAmortissementStats({ includeAll = false } = {}) {
   const items = await query(`
     SELECT 
       a.id, a.\`Nom Machine\` as asset_tag, a.marque, a.modele, a.type, a.statut, a.site,
@@ -336,7 +336,7 @@ async function getAmortissementStats() {
     duree_amortissement_mois: DURATION_MONTHS,
     devise: configuredDevise,
     distribution_age: ageDistribution,
-    items: formattedItems.slice(0, 50)
+    items: includeAll ? formattedItems : formattedItems.slice(0, 50)
   };
 }
 

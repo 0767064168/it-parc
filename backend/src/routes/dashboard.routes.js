@@ -1,6 +1,16 @@
 'use strict';
 const express = require('express');
-const { getStats, getAdvancedReports, getAmortissement, triggerExpiringAlertsEmail, cronExpiringAlerts, getMonEspace, reportMonIncident } = require('../controllers/dashboard.controller');
+const {
+  getStats,
+  getAdvancedReports,
+  getAmortissement,
+  exportAmortissementPdf,
+  exportAmortissementExcel,
+  triggerExpiringAlertsEmail,
+  cronExpiringAlerts,
+  getMonEspace,
+  reportMonIncident,
+} = require('../controllers/dashboard.controller');
 const { authenticate } = require('../middlewares/auth');
 const { requirePermission } = require('../middlewares/roles');
 const router = express.Router();
@@ -8,6 +18,8 @@ const router = express.Router();
 router.get('/stats', authenticate, requirePermission('dashboard:read'), getStats);
 router.get('/reports', authenticate, requirePermission('dashboard:read'), getAdvancedReports);
 router.get('/amortissement', authenticate, requirePermission('dashboard:read'), getAmortissement);
+router.get('/amortissement/pdf', authenticate, requirePermission('dashboard:read'), exportAmortissementPdf);
+router.get('/amortissement/excel', authenticate, requirePermission('dashboard:read'), exportAmortissementExcel);
 router.post('/send-expiring-alerts', authenticate, requirePermission('affectations:manage'), triggerExpiringAlertsEmail);
 router.get('/cron/expiring-alerts', cronExpiringAlerts);
 router.get('/mon-espace', authenticate, getMonEspace);

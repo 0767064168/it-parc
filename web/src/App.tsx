@@ -2309,7 +2309,7 @@ function ModulePage({ path }: { path: string }) {
           )}
         </div>
         {successMessage && <div className="alert alert-success" role="status"><div><strong>Opération réussie</strong><span>{successMessage}</span></div><button className="alert-dismiss" onClick={() => setSuccessMessage('')} aria-label="Fermer">×</button></div>}
-        {error && <div className="alert alert-error" role="alert"><div><strong>Erreur de récupération des données</strong><span>{error}</span></div><button className="button button-secondary" onClick={() => setRefreshKey((current) => current + 1)}>Réessayer</button></div>}
+        {error && <div className="alert alert-error" role="alert"><div><strong>Une erreur est survenue</strong><span>{error}</span></div><button className="button button-secondary" onClick={() => setRefreshKey((current) => current + 1)}>Réessayer</button></div>}
         {loading ? <div className="loading-lines"><i /><i /><i /></div> : (
           <>
           {path === '/tickets' && <p className="ticket-table-scroll-hint">Faites défiler horizontalement pour afficher toutes les colonnes.</p>}
@@ -2991,6 +2991,25 @@ function ReportsPage() {
     return () => { active = false; };
   }, [token]);
 
+  async function handleExportAmortissementFile(format: 'pdf' | 'excel') {
+    const ext = format === 'pdf' ? 'pdf' : 'xlsx';
+    const year = new Date().getFullYear();
+    const filename = format === 'pdf'
+      ? `Rapport_Amortissement_VNC_${year}.pdf`
+      : `Grand_Livre_Amortissement_${year}.${ext}`;
+    try {
+      const blob = await apiDownload(`/dashboard/amortissement/${format}`, { token });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : `Erreur lors de l'export ${format.toUpperCase()}`);
+    }
+  }
+
   function handleExportAmortissementCsv() {
     if (!amortissement?.items) return;
     const headers = ['Tag Machine', 'Marque', 'Modèle', 'Type', 'Site', 'Date Acquisition', 'Âge (Années)', 'Prix Achat (XOF)', 'VNC Actuelle (XOF)', 'Taux Amorti', 'Statut Fin de Vie'];
@@ -3420,14 +3439,30 @@ function ReportsPage() {
                 </h2>
                 <p style={{ fontSize: 11 }}>Calcul de dépréciation linéaire ({amortissement?.duree_amortissement_mois || 36} mois) et projection budgétaire de renouvellement</p>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() => void handleExportAmortissementFile('pdf')}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+                >
+                  <Download size={14} /> Rapport VNC (PDF)
+                </button>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() => void handleExportAmortissementFile('excel')}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+                >
+                  <FileSpreadsheet size={14} /> Grand Livre (Excel)
+                </button>
                 <button
                   type="button"
                   className="button button-secondary"
                   onClick={handleExportAmortissementCsv}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}
                 >
-                  <FileSpreadsheet size={14} /> Grand Livre Amortissement (CSV)
+                  <FileSpreadsheet size={14} /> Grand Livre (CSV)
                 </button>
               </div>
             </div>

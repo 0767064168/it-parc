@@ -18,7 +18,7 @@ jest.mock('../src/services/email.service', () => ({
   sendExpiringAlertsDigest: jest.fn().mockResolvedValue(true),
 }));
 
-const { query } = require('../src/config/db');
+const { query, transaction } = require('../src/config/db');
 const auditCtrl = require('../src/controllers/audit.controller');
 const logsCtrl = require('../src/controllers/logs.controller');
 const dashboardCtrl = require('../src/controllers/dashboard.controller');
@@ -153,6 +153,8 @@ describe('Nouveaux modules DSI (Audits, Logs, Mon Espace, Paramètres, Amortisse
   test('asset.archive fonctionne sans req.body (DELETE sans payload)', async () => {
     query.mockResolvedValue([]);
     query.mockResolvedValueOnce([{ id: 42, asset_tag: 'PC-CC-IT-TEST' }]);
+    const mockConn = { execute: jest.fn().mockResolvedValue([]) };
+    transaction.mockImplementation(async (cb) => cb(mockConn));
 
     const req = { params: { id: '42' }, user: { id: 1 } }; // req.body undefined
     const res = mockRes();
@@ -160,19 +162,22 @@ describe('Nouveaux modules DSI (Audits, Logs, Mon Espace, Paramètres, Amortisse
     await assetCtrl.archive(req, res);
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+    expect(mockConn.execute).toHaveBeenCalledTimes(2);
   });
 
   test('asset.archive transmet le motif quand fourni', async () => {
     query.mockResolvedValue([]);
     query.mockResolvedValueOnce([{ id: 42, asset_tag: 'PC-CC-IT-TEST' }]);
+    const mockConn = { execute: jest.fn().mockResolvedValue([]) };
+    transaction.mockImplementation(async (cb) => cb(mockConn));
 
     const req = { params: { id: '42' }, body: { motif: 'Matériel réformé' }, user: { id: 1 } };
     const res = mockRes();
 
     await assetCtrl.archive(req, res);
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining('CAST(? AS TEXT)'),
+    expect(mockConn.execute).toHaveBeenCalledWith(
+      expect.stringContaining('UPDATE assets SET statut = ?'),
       ['reforme', 'Matériel réformé', 42]
     );
   });
@@ -202,5 +207,77 @@ describe('Nouveaux modules DSI (Audits, Logs, Mon Espace, Paramètres, Amortisse
 
     await assetCtrl.restore(req, res);
     expect(res.status).toHaveBeenCalledWith(400);
+  });
+
+  test('dashboard.exportAmortissementExcel génère un classeur XLSX valide', async () => {
+    query
+      .mockResolvedValueOnce([
+        {
+          id: 1,
+          asset_tag: 'PC-CC-IT-TEST',
+          marque: 'Dell',
+          modele: 'Latitude 5440',
+          type: 'laptop',
+          statut: 'en_service',
+          site: 'BOUAKE',
+          prix: 650000,
+          date_acquisition: '2024-01-15',
+          devise: 'XOF',
+        },
+      ])
+      .mockResolvedValueOnce([{ cle: 'amortissement_mois', valeur: '36' }]);
+
+    const req = {};
+    const res = {
+      setHeader: jest.fn(),
+      send: jest.fn(),
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn().mockReturnThis(),
+    };
+
+    await dashboardCtrl.exportAmortissementExcel(req, res);
+    expect(res.setHeader).toHaveBeenCalledWith(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    expect(res.send).toHaveBeenCalledWith(expect.any(Buffer));
+    const buffer = res.send.mock.calls[0][0];
+    expect(buffer.length).toBeGreaterThan(100);
+  });
+
+  test('dashboard.exportAmortissementPdf génère un flux PDF valide', async () => {
+    const { PassThrough } = require('stream');
+    query
+      .mockResolvedValueOnce([
+        {
+          id: 1,
+          asset_tag: 'PC-CC-IT-TEST',
+          marque: 'Dell',
+          modele: 'Latitude 5440',
+          type: 'laptop',
+          statut: 'en_service',
+          site: 'BOUAKE',
+          prix: 650000,
+          date_acquisition: '2024-01-15',
+          devise: 'XOF',
+        },
+      ])
+      .mockResolvedValueOnce([{ cle: 'amortissement_mois', valeur: '36' }]);
+
+    const stream = new PassThrough();
+    const chunks = [];
+    stream.on('data', (chunk) => chunks.push(chunk));
+    const finished = new Promise((resolve) => stream.on('end', resolve));
+
+    stream.setHeader = jest.fn();
+    stream.status = jest.fn().mockReturnValue(stream);
+    stream.json = jest.fn().mockReturnValue(stream);
+
+    await dashboardCtrl.exportAmortissementPdf({}, stream);
+    await finished;
+
+    expect(stream.setHeader).toHaveBeenCalledWith('Content-Type', 'application/pdf');
+    const pdfBuffer = Buffer.concat(chunks);
+    expect(pdfBuffer.subarray(0, 4).toString('utf8')).toBe('%PDF');
   });
 });

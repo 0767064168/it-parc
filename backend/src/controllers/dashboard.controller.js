@@ -192,4 +192,158 @@ async function cronExpiringAlerts(req, res) {
   return triggerExpiringAlertsEmail(req, res);
 }
 
-module.exports = { getStats, getAdvancedReports, getAmortissement, triggerExpiringAlertsEmail, cronExpiringAlerts, getMonEspace, reportMonIncident };
+async function exportAmortissementPdf(req, res) {
+  try {
+    const PDFDocument = require('pdfkit');
+    const data = await DashboardModel.getAmortissementStats({ includeAll: true });
+    const devise = data.devise || 'XOF';
+    const year = new Date().getFullYear();
+
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 36,
+      info: {
+        Title: `Rapport d'Amortissement VNC - ${year}`,
+        Author: 'Direction IT Bouaké',
+        Subject: 'Grand Livre Amortissement & Budget Prévisionnel N+1',
+      },
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="Rapport_Amortissement_VNC_${year}.pdf"`);
+    doc.pipe(res);
+
+    const drawHeader = () => {
+      doc.rect(36, 36, 523, 56).fill('#0f172a');
+      doc.fillColor('#38bdf8').fontSize(8.5).font('Helvetica-Bold')
+        .text('DIRECTION DES SYSTÈMES D\'INFORMATION • PARC IT BOUAKÉ', 48, 46);
+      doc.fillColor('#ffffff').fontSize(13).font('Helvetica-Bold')
+        .text('RAPPORT D\'AMORTISSEMENT VNC & BUDGET N+1', 48, 60);
+      doc.fillColor('#cbd5e1').fontSize(8).font('Helvetica')
+        .text(`Édition : ${new Date().toLocaleDateString('fr-FR')} • Durée linéaire : ${data.duree_amortissement_mois} mois`, 48, 76);
+    };
+
+    drawHeader();
+
+    // Synthèse KPI
+    let y = 104;
+    doc.rect(36, y, 523, 54).fill('#f8fafc').strokeColor('#cbd5e1').stroke();
+    const kpis = [
+      { label: 'Acquisition Totale', val: `${Number(data.total_acquisition || 0).toLocaleString('fr-FR')} ${devise}` },
+      { label: 'Valeur Nette Comptable', val: `${Number(data.total_vnc || 0).toLocaleString('fr-FR')} ${devise}` },
+      { label: 'Taux Amorti / Âge Moyen', val: `${data.taux_global_amorti_pct}% (${data.age_moyen_annees} ans)` },
+      { label: 'Budget Renouvellement N+1', val: `${Number(data.budget_previsionnel_n1 || 0).toLocaleString('fr-FR')} ${devise}` },
+    ];
+    kpis.forEach((kpi, idx) => {
+      const x = 44 + idx * 129;
+      doc.fillColor('#64748b').fontSize(7).font('Helvetica').text(kpi.label, x, y + 10, { width: 124 });
+      doc.fillColor('#0f172a').fontSize(9).font('Helvetica-Bold').text(kpi.val, x, y + 24, { width: 124 });
+    });
+
+    y += 68;
+
+    const drawTableHeader = (topY) => {
+      doc.rect(36, topY, 523, 18).fill('#1e293b');
+      doc.fillColor('#ffffff').fontSize(7.5).font('Helvetica-Bold');
+      doc.text('Nom Machine', 40, topY + 5, { width: 92 });
+      doc.text('Type / Site', 134, topY + 5, { width: 82 });
+      doc.text('Acquis.', 218, topY + 5, { width: 58 });
+      doc.text('Âge', 278, topY + 5, { width: 34 });
+      doc.text(`Prix (${devise})`, 314, topY + 5, { width: 72, align: 'right' });
+      doc.text(`VNC (${devise})`, 390, topY + 5, { width: 72, align: 'right' });
+      doc.text('État', 468, topY + 5, { width: 86, align: 'right' });
+      return topY + 20;
+    };
+
+    y = drawTableHeader(y);
+
+    for (let i = 0; i < (data.items || []).length; i += 1) {
+      const item = data.items[i];
+      if (y > 760) {
+        doc.addPage();
+        drawHeader();
+        y = drawTableHeader(104);
+      }
+      if (i % 2 === 1) {
+        doc.rect(36, y - 2, 523, 15).fill('#f8fafc');
+      }
+      doc.fillColor('#0f172a').fontSize(7).font('Helvetica-Bold')
+        .text(String(item.asset_tag || '—'), 40, y + 2, { width: 92, ellipsis: true });
+      doc.fillColor('#475569').font('Helvetica')
+        .text(`${item.type || '—'} • ${item.site || '—'}`, 134, y + 2, { width: 82, ellipsis: true })
+        .text(String(item.date_acquisition || '—'), 218, y + 2, { width: 58 })
+        .text(`${item.age_mois}m`, 278, y + 2, { width: 34 })
+        .text(Number(item.prix_achat || 0).toLocaleString('fr-FR'), 314, y + 2, { width: 72, align: 'right' })
+        .text(Number(item.vnc || 0).toLocaleString('fr-FR'), 390, y + 2, { width: 72, align: 'right' });
+      doc.fillColor(item.est_amorti ? '#dc2626' : '#059669').font('Helvetica-Bold')
+        .text(item.est_amorti ? '100% AMORTI' : `${item.taux_amorti_pct}%`, 468, y + 2, { width: 86, align: 'right' });
+      y += 15;
+    }
+
+    doc.end();
+  } catch (err) {
+    logger.error('Erreur exportAmortissementPdf:', err);
+    return error(res, 'Erreur lors de la génération du rapport PDF d\'amortissement', 500);
+  }
+}
+
+async function exportAmortissementExcel(req, res) {
+  try {
+    const XLSX = require('@e965/xlsx');
+    const data = await DashboardModel.getAmortissementStats({ includeAll: true });
+    const devise = data.devise || 'XOF';
+    const year = new Date().getFullYear();
+
+    const wb = XLSX.utils.book_new();
+
+    const summaryRows = [
+      { Indicateur: 'Valeur d\'Acquisition Totale', Valeur: data.total_acquisition, Devise: devise },
+      { Indicateur: 'Valeur Nette Comptable (VNC)', Valeur: data.total_vnc, Devise: devise },
+      { Indicateur: 'Taux Global d\'Amortissement (%)', Valeur: data.taux_global_amorti_pct, Devise: '%' },
+      { Indicateur: 'Équipements Totaux', Valeur: data.nb_machines_total, Devise: 'unités' },
+      { Indicateur: 'Équipements 100% Amortis', Valeur: data.nb_machines_amorties, Devise: 'unités' },
+      { Indicateur: 'Âge Moyen du Parc (ans)', Valeur: data.age_moyen_annees, Devise: 'ans' },
+      { Indicateur: 'Budget Prévisionnel Renouvellement N+1', Valeur: data.budget_previsionnel_n1, Devise: devise },
+      { Indicateur: 'Durée d\'Amortissement Linéaire (mois)', Valeur: data.duree_amortissement_mois, Devise: 'mois' },
+    ];
+    const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
+    XLSX.utils.book_append_sheet(wb, wsSummary, 'Synthèse Financière');
+
+    const ledgerRows = (data.items || []).map((item) => ({
+      'Nom Machine': item.asset_tag,
+      'Type': item.type,
+      'Marque': item.marque || '',
+      'Modèle': item.modele || '',
+      'Site': item.site || '',
+      'Statut': item.statut || '',
+      'Date Acquisition': item.date_acquisition,
+      'Âge (mois)': item.age_mois,
+      [`Prix Achat (${devise})`]: item.prix_achat,
+      [`VNC Actuelle (${devise})`]: item.vnc,
+      'Taux Amorti (%)': item.taux_amorti_pct,
+      'État Amortissement': item.est_amorti ? '100% AMORTI (À RENOUVELER)' : 'EN COURS D\'AMORTISSEMENT',
+    }));
+    const wsLedger = XLSX.utils.json_to_sheet(ledgerRows);
+    XLSX.utils.book_append_sheet(wb, wsLedger, 'Grand Livre VNC');
+
+    const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="Grand_Livre_Amortissement_${year}.xlsx"`);
+    return res.send(buffer);
+  } catch (err) {
+    logger.error('Erreur exportAmortissementExcel:', err);
+    return error(res, 'Erreur lors de l\'export Excel d\'amortissement', 500);
+  }
+}
+
+module.exports = {
+  getStats,
+  getAdvancedReports,
+  getAmortissement,
+  exportAmortissementPdf,
+  exportAmortissementExcel,
+  triggerExpiringAlertsEmail,
+  cronExpiringAlerts,
+  getMonEspace,
+  reportMonIncident,
+};
