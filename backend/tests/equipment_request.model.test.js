@@ -22,6 +22,10 @@ describe('equipment request model', () => {
       expect.stringContaining('WHERE r.requester_id = ?'),
       [7]
     );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('a.`Nom Machine` AS asset_tag'),
+      [7]
+    );
   });
 
   test('creates an audited request for the active account', async () => {

@@ -10,7 +10,7 @@ async function findAll({ requesterId, includeAll }) {
       COALESCE(NULLIF(CONCAT_WS(' ', requester.prenom, requester.nom), ''), r.requester_name) AS requester_display_name,
       requester.username AS requester_current_username,
       reviewer.username AS reviewer_username,
-      a."Nom Machine" AS asset_tag
+      a.\`Nom Machine\` AS asset_tag
     FROM equipment_requests r
     LEFT JOIN auth_users requester ON requester.id = r.requester_id
     LEFT JOIN auth_users reviewer ON reviewer.id = r.reviewer_id
@@ -25,7 +25,7 @@ async function findById(id) {
     SELECT r.*,
       COALESCE(NULLIF(CONCAT_WS(' ', requester.prenom, requester.nom), ''), r.requester_name) AS requester_display_name,
       reviewer.username AS reviewer_username,
-      a."Nom Machine" AS asset_tag
+      a.\`Nom Machine\` AS asset_tag
     FROM equipment_requests r
     LEFT JOIN auth_users requester ON requester.id = r.requester_id
     LEFT JOIN auth_users reviewer ON reviewer.id = r.reviewer_id
@@ -37,10 +37,10 @@ async function findById(id) {
 
 async function findAvailableAssets() {
   return query(`
-    SELECT id, "Nom Machine" AS asset_tag, marque, modele
+    SELECT id, \`Nom Machine\` AS asset_tag, marque, modele
     FROM assets
     WHERE deleted_at IS NULL AND statut = 'en_stock'
-    ORDER BY "Nom Machine"
+    ORDER BY \`Nom Machine\`
   `);
 }
 
