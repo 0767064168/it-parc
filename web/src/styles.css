@@ -1104,7 +1104,11 @@ a { color: inherit; text-decoration: none; }
 .ticket-kanban-number { overflow: hidden; color: #76839a; font-size: 9px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .ticket-kanban-title { display: -webkit-box; overflow: hidden; color: #263650; font-size: 11px; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .ticket-kanban-type { color: #758198; font-size: 9px; text-transform: capitalize; }
+.ticket-kanban-description { display: -webkit-box; overflow: hidden; color: #768398; font-size: 9px; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.ticket-kanban-extra { display: grid; gap: 3px; color: #66748a; font-size: 9px; }
 .ticket-kanban-meta { display: flex; flex-wrap: wrap; gap: 4px 8px; color: #8a96a8; font-size: 9px; }
+.ticket-kanban-sla { color: #778398; font-size: 9px; }
+.ticket-kanban-sla.overdue { color: #c34d57; font-weight: 700; }
 .ticket-kanban-date { color: #9aa4b3; font-size: 9px; }
 .ticket-kanban-empty { margin: 0; padding: 12px 4px; color: #9aa4b3; font-size: 9px; text-align: center; }
 [data-theme="dark"] .ticket-view-toggle { border-color: var(--line); }
@@ -1113,6 +1117,9 @@ a { color: inherit; text-decoration: none; }
 [data-theme="dark"] .ticket-kanban-heading h3 { color: #b0c0d6; }
 [data-theme="dark"] .ticket-kanban-card { border-color: var(--line); color: #c4d2e5; background: #132238; }
 [data-theme="dark"] .ticket-kanban-title { color: #e6edf8; }
+[data-theme="dark"] .ticket-kanban-description,
+[data-theme="dark"] .ticket-kanban-extra { color: #a4b4ca; }
+[data-theme="dark"] .ticket-kanban-sla.overdue { color: #ff7f8a; }
 [data-theme="dark"] .ticket-kanban-card:hover { border-color: #6379e6; }
 .table-search { display: flex; width: min(100%, 340px); height: 34px; align-items: center; gap: 8px; padding: 0 9px; border: 1px solid #e7ebf1; border-radius: 7px; color: #8995a8; }
 .table-search input, .global-search input { min-width: 0; flex: 1; border: 0; outline: 0; color: #45536b; background: transparent; font-size: 10px; }

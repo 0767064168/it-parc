@@ -2222,10 +2222,21 @@ function ModulePage({ path }: { path: string }) {
                           .map(cellText)
                           .filter((value) => value !== '—')
                           .join(' ') || cellText(row.createur_username);
+                        const technicianName = [row.technicien_prenom, row.technicien_nom]
+                          .map(cellText)
+                          .filter((value) => value !== '—')
+                          .join(' ') || cellText(row.technicien_username);
                         const createdAt = row.created_at ? new Date(String(row.created_at)) : null;
                         const createdLabel = createdAt && !Number.isNaN(createdAt.getTime())
                           ? createdAt.toLocaleDateString('fr-FR')
                           : '—';
+                        const slaDate = row.sla_deadline ? new Date(String(row.sla_deadline)) : null;
+                        const slaTimestamp = slaDate?.getTime() ?? Number.NaN;
+                        const isActiveTicket = !['resolu', 'ferme', 'annule'].includes(String(row.statut));
+                        const slaOverdue = isActiveTicket && Number.isFinite(slaTimestamp) && slaTimestamp < Date.now();
+                        const slaLabel = Number.isFinite(slaTimestamp)
+                          ? slaDate?.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                          : null;
                         return (
                           <button
                             type="button"
@@ -2240,10 +2251,22 @@ function ModulePage({ path }: { path: string }) {
                             </span>
                             <strong className="ticket-kanban-title">{cellText(row.titre)}</strong>
                             <span className="ticket-kanban-type">{cellText(row.type).replace(/_/g, ' ')}</span>
+                            {Boolean(row.description) && <span className="ticket-kanban-description">{cellText(row.description)}</span>}
+                            {(row.asset_tag || technicianName !== '—') && (
+                              <span className="ticket-kanban-extra">
+                                {Boolean(row.asset_tag) && <span>Matériel : {cellText(row.asset_tag)}</span>}
+                                {technicianName !== '—' && <span>Technicien : {technicianName}</span>}
+                              </span>
+                            )}
                             <span className="ticket-kanban-meta">
                               <span>{requesterName}</span>
                               {Boolean(row.site) && <span>{cellText(row.site)}</span>}
                             </span>
+                            {slaLabel && (
+                              <span className={`ticket-kanban-sla ${slaOverdue ? 'overdue' : ''}`}>
+                                {slaOverdue ? 'SLA dépassé' : 'Échéance SLA'} · {slaLabel}
+                              </span>
+                            )}
                             <span className="ticket-kanban-date">{createdLabel}</span>
                           </button>
                         );
