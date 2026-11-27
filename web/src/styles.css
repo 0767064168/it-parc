@@ -1090,7 +1090,15 @@ a { color: inherit; text-decoration: none; }
 .ticket-view-toggle { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid #e7ebf1; border-radius: 8px; }
 .ticket-view-toggle .button { min-height: 28px; padding: 4px 9px; font-size: 10px; }
 .ticket-view-toggle .ticket-view-active { color: #fff; border-color: #4263eb; background: #4263eb; }
+.ticket-kanban-navigation { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; color: #8793a5; font-size: 10px; }
+.ticket-kanban-navigation > div { display: flex; gap: 6px; }
+.ticket-kanban-navigation .button { min-height: 29px; padding: 4px 9px; font-size: 10px; }
 .ticket-kanban-scroll { overflow-x: auto; margin: 14px -20px 0; padding-bottom: 8px; }
+.ticket-kanban-scroll { scrollbar-color: #9aa8c2 #edf0f5; scrollbar-width: thin; }
+.ticket-kanban-scroll::-webkit-scrollbar { height: 10px; }
+.ticket-kanban-scroll::-webkit-scrollbar-track { border-radius: 6px; background: #edf0f5; }
+.ticket-kanban-scroll::-webkit-scrollbar-thumb { border-radius: 6px; background: #9aa8c2; }
+.ticket-kanban-scroll:focus-visible { outline: 2px solid #4263eb; outline-offset: 2px; }
 .ticket-kanban { display: grid; grid-auto-columns: minmax(230px, 270px); grid-auto-flow: column; align-items: start; gap: 12px; width: max-content; padding: 2px 20px 8px; }
 .ticket-kanban-column { min-height: 180px; padding: 10px; border: 1px solid #e7ebf1; border-radius: 9px; background: #f7f8fb; }
 .ticket-kanban-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
@@ -1113,6 +1121,10 @@ a { color: inherit; text-decoration: none; }
 .ticket-kanban-empty { margin: 0; padding: 12px 4px; color: #9aa4b3; font-size: 9px; text-align: center; }
 [data-theme="dark"] .ticket-view-toggle { border-color: var(--line); }
 [data-theme="dark"] .ticket-view-toggle .ticket-view-active { color: #fff; background: #4263eb; }
+[data-theme="dark"] .ticket-kanban-navigation { color: #a4b4ca; }
+[data-theme="dark"] .ticket-kanban-scroll { scrollbar-color: #52657f #172840; }
+[data-theme="dark"] .ticket-kanban-scroll::-webkit-scrollbar-track { background: #172840; }
+[data-theme="dark"] .ticket-kanban-scroll::-webkit-scrollbar-thumb { background: #52657f; }
 [data-theme="dark"] .ticket-kanban-column { border-color: var(--line); background: #0f1c30; }
 [data-theme="dark"] .ticket-kanban-heading h3 { color: #b0c0d6; }
 [data-theme="dark"] .ticket-kanban-card { border-color: var(--line); color: #c4d2e5; background: #132238; }
@@ -1262,6 +1274,7 @@ a { color: inherit; text-decoration: none; }
   .module-toolbar { align-items: stretch; flex-direction: column; }
   .module-toolbar-controls { align-items: stretch; flex-direction: column; }
   .ticket-view-toggle { align-self: flex-start; }
+  .ticket-kanban-navigation { align-items: flex-start; flex-direction: column; }
   .table-search { width: 100%; height: 40px; }
   .table-search input { font-size: 12px; }
   .topbar-actions .notification-button,

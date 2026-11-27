@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   Activity,
   Archive,
@@ -10,6 +10,8 @@ import {
   BriefcaseBusiness,
   ChartNoAxesCombined,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CircleAlert,
   CircleHelp,
   ArrowRight,
@@ -1320,6 +1322,7 @@ function ModulePage({ path }: { path: string }) {
   const [showCsvImport, setShowCsvImport] = useState(false);
   const [pageLimit, setPageLimit] = useState(20);
   const [ticketView, setTicketView] = useState<'kanban' | 'list'>('kanban');
+  const ticketBoardRef = useRef<HTMLDivElement>(null);
   const isTicketKanban = path === '/tickets' && ticketView === 'kanban';
 
   const rows = useMemo(() => extractRows(payload), [payload]);
@@ -1364,6 +1367,16 @@ function ModulePage({ path }: { path: string }) {
       setSortOrder('asc');
     }
   }
+
+  function scrollTicketBoardTo(edge: 'start' | 'end') {
+    const board = ticketBoardRef.current;
+    if (!board) return;
+    board.scrollTo({
+      left: edge === 'start' ? 0 : board.scrollWidth,
+      behavior: 'smooth',
+    });
+  }
+
   const [createOpen, setCreateOpen] = useState(false);
   const [editingRow, setEditingRow] = useState<Record<string, unknown> | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
@@ -2206,7 +2219,19 @@ function ModulePage({ path }: { path: string }) {
         {successMessage && <div className="alert alert-success" role="status"><div><strong>Opération réussie</strong><span>{successMessage}</span></div><button className="alert-dismiss" onClick={() => setSuccessMessage('')} aria-label="Fermer">×</button></div>}
         {error && <div className="alert alert-error" role="alert"><div><strong>Erreur de récupération des données</strong><span>{error}</span></div><button className="button button-secondary" onClick={() => setRefreshKey((current) => current + 1)}>Réessayer</button></div>}
         {loading ? <div className="loading-lines"><i /><i /><i /></div> : isTicketKanban ? (
-          <div className="ticket-kanban-scroll">
+          <>
+            <div className="ticket-kanban-navigation">
+              <span>Faites défiler horizontalement pour afficher toutes les colonnes.</span>
+              <div>
+                <button type="button" className="button button-secondary" onClick={() => scrollTicketBoardTo('start')}>
+                  <ChevronLeft size={14} /> Début
+                </button>
+                <button type="button" className="button button-secondary" onClick={() => scrollTicketBoardTo('end')}>
+                  Fin <ChevronRight size={14} />
+                </button>
+              </div>
+            </div>
+          <div className="ticket-kanban-scroll" ref={ticketBoardRef} tabIndex={0} aria-label="Colonnes du tableau Kanban des tickets">
             <div className="ticket-kanban">
               {ticketKanbanStatuses.map((status) => {
                 const laneRows = sortedRows.filter((row) => row.statut === status.value);
@@ -2277,6 +2302,7 @@ function ModulePage({ path }: { path: string }) {
               })}
             </div>
           </div>
+          </>
         ) : (
           <div className="table-scroll module-table-scroll">
             <table className="data-table module-table">
